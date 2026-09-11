@@ -1,6 +1,7 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document } from 'mongoose';
 import { BasePost } from '../../common/schema/base-post.schema';
+import * as mongoose from 'mongoose';
 
 export type JobDocument = Job & Document;
 
@@ -42,8 +43,14 @@ export interface ImportantDate {
 // The main Job schema class, representing a job post in the database
 @Schema({ timestamps: true })
 export class Job extends BasePost {
+  @Prop({ default: false })
+  isBulletin?: boolean;
+
   @Prop({ index: true })
   organization?: string;
+
+  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'Organization' })
+  organizationId?: mongoose.Types.ObjectId;
 
   @Prop({ index: true })
   location?: string;

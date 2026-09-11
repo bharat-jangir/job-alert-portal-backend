@@ -1,4 +1,4 @@
-import { IsString, IsEnum, IsDate, IsUrl, IsArray, ValidateNested, IsOptional, Matches, Validate } from 'class-validator';
+import { IsString, IsEnum, IsDate, IsUrl, IsArray, ValidateNested, IsOptional, Matches, Validate, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ExperienceLevel, QualificationLevel, JobType } from '../schemas/job.schema';
 
@@ -40,6 +40,14 @@ export class CreateJobDto {
   @IsString()
   @IsOptional()
   organization?: string;
+
+  @IsString()
+  @IsOptional()
+  organizationId?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  isBulletin?: boolean;
 
   @IsString()
   @IsOptional()

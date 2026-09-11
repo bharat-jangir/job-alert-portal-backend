@@ -9,6 +9,7 @@ import { UsersModule } from '../app/users/users.module';
 import { RedirectLinkModule } from '../app/common/redirect-link.module';
 import { FaqsModule } from '../app/faqs/faqs.module';
 import { ContactModule } from '../app/contact/contact.module';
+import { OrganizationsModule } from '../app/organizations/organizations.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { ContactModule } from '../app/contact/contact.module';
     RedirectLinkModule,
     FaqsModule,
     ContactModule,
+    OrganizationsModule,
   ],
   exports: [],
   controllers: [AppController,],

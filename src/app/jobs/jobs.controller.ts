@@ -19,10 +19,9 @@ export class JobsController {
 
   // Get all jobs with optional query filters (pagination, search, etc.)
 
-  @Get('categories')
-  async getCategories() {
-    const categories = await this.jobService.getDistinctCategories();
-    return { data: { categories } };
+  @Get('organizations')
+  async getOrganizations() {
+    return this.jobService.getDistinctOrganizations();
   }
   @Get()
   async findAll(@Query() query: QueryJobDto): Promise<{ jobs: Job[]; total: number }> {
@@ -97,9 +96,20 @@ export class JobsController {
   // Get jobs by type, returning only title and slug
   @Get('by-type/:type')
   async findByType(@Param('type') type: JobType) {
-    const data = await this.jobService.findByType(type);
-    return { data };
+    return this.jobService.findByType(type);
   }
+
+    // Get jobs marked as bulletin
+    @Get('bulletins')
+    async findBulletins(): Promise<Job[]> {
+      return this.jobService.findBulletins();
+    }
+
+    // Toggle bulletin status
+    @Patch('bulletins/:id/toggle')
+    async toggleBulletin(@Param('id') id: string): Promise<Job> {
+      return this.jobService.toggleBulletin(id);
+    }
 
     // Get a job by its slug
     @Get(':slug')

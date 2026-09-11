@@ -56,6 +56,7 @@ export class JobsService {
         .sort({ publishedAt: -1 })
         .skip((page - 1) * limit)
         .select("-htmlContent -tags -eligibility")
+        .populate('organizationId')
         .limit(limit)
         .exec(),
       this.jobModel.countDocuments(filter)
@@ -66,7 +67,7 @@ export class JobsService {
 
   // Find a single job by its ID
   async findOne(id: string): Promise<Job> {
-    const job = await this.jobModel.findById(id).exec();
+    const job = await this.jobModel.findById(id).populate('organizationId').exec();
     if (!job) {
       throw new NotFoundException(`Job with ID ${id} not found`);
     }
@@ -83,6 +84,15 @@ export class JobsService {
       throw new NotFoundException(`Job with ID ${id} not found`);
     }
     return updatedJob;
+  }
+
+  // Toggle the isBulletin flag for a job
+  async toggleBulletin(id: string): Promise<Job> {
+    const job = await this.jobModel.findById(id).exec();
+    if (!job) {
+      throw new NotFoundException(`Job with ID ${id} not found`);
+    }
+    return this.jobModel.findByIdAndUpdate(id, { isBulletin: !job.isBulletin }, { new: true }).exec() as Promise<Job>;
   }
 
   // Remove a job by its ID
@@ -136,11 +146,21 @@ export class JobsService {
       .exec();
   }
 
+  // Find jobs marked as bulletins
+  async findBulletins(): Promise<Job[]> {
+    return this.jobModel
+      .find({ isBulletin: true })
+      .populate('organizationId')
+      .sort({ updatedAt: -1 })
+      .exec();
+  }
+
   // Find popular jobs by views and applications
   async findPopularJobs(): Promise<Job[]> {
     return this.jobModel
       .find({ isActive: true })
       .sort({ views: -1, applications: -1 })
+      .populate('organizationId', 'name slug')
       .limit(10)
       .exec();
   }
@@ -159,7 +179,7 @@ export class JobsService {
       throw new NotFoundException('Slug is required');
     }
     
-    const job = await this.jobModel.findOne({ slug, isActive: true }).exec();
+    const job = await this.jobModel.findOne({ slug, isActive: true }).populate('organizationId').exec();
     if (!job) {
       throw new NotFoundException(`Job with slug ${slug} not found`);
     }
@@ -189,7 +209,8 @@ export class JobsService {
     return this.jobModel
       .find({ isActive: true })
       .sort({ publishedAt: -1 })
-      .select("_id title slug organization lastDate")
+      .select("_id title slug organization organizationId lastDate")
+      .populate('organizationId', 'name slug')
       .limit(limit)
       .exec();
   }
@@ -199,8 +220,8 @@ export class JobsService {
     return this.jobModel.find({ type, isActive: true }).select('title slug').exec();
   }
 
-  // New method: get distinct categories for homepage
-  async getDistinctCategories(): Promise<string[]> {
-    return this.jobModel.distinct('category').exec() as Promise<string[]>;
+  // New method: get distinct organizations for homepage
+  async getDistinctOrganizations(): Promise<string[]> {
+    return this.jobModel.distinct('organization').exec() as Promise<string[]>;
   }
 }
