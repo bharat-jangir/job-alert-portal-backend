@@ -10,11 +10,14 @@ async function bootstrap() {
     logger: new CustomLogger(),
   });
 
-  // Enable CORS with specific configuration based on environment
+  // Enable CORS for Vercel frontends & local development
   app.enableCors({
-    origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000', 'http://localhost:3001'],
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept'],
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      // Add your Vercel URLs here later (e.g., 'https://your-admin.vercel.app')
+      /\.vercel\.app$/, // Allows any vercel preview deployment
+    ],
     credentials: true,
   });
 
@@ -36,6 +39,8 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api');
 
-  await app.listen(process.env.PORT || 5000);
+  // Listen on process.env.PORT provided by Render, fallback to 5000
+  const port = process.env.PORT || 5000;
+  await app.listen(port, '0.0.0.0');
 }
 bootstrap();
