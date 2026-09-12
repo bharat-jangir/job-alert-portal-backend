@@ -20,21 +20,7 @@ export enum QualificationLevel {
   OTHER = 'OTHER'
 }
 
-// Enum for different job types, used for categorizing posts
-export enum JobType {
-  JOB='job',
-  RESULT = 'result',           // For result posts
-  ANSWERKEY = 'answer-key',    // For answer key posts
-  ADMISSION = 'admission',     // For admission posts
-  ADMITCARD = 'admit-card',    // For admit card posts
-  ONLINEFORM = 'online-form',  // For online form posts
-  UPDATE = 'update',           // For update posts
-  SYLLABUS = 'syllabus',       // For syllabus posts
-  UPCOMING = 'upcoming',       // For upcoming posts
-  VERIFICATION = 'verification', // For verification posts
-  SARKARIYOJANA = 'sarkari-yojana', // For sarkari yojana posts
-}
-
+// Dynamic job categories are now managed via JobCategory collection
 export interface ImportantDate {
   label?: string;
   date?: Date;
@@ -100,9 +86,13 @@ export class Job extends BasePost {
   @Prop()
   ageLimit?: string;
 
-  // Type of the job post, used for filtering and categorization
-  @Prop({ enum: JobType })
-  type?: JobType;
+  // Store the actual text/slug of the category for easy querying without joining
+  @Prop()
+  type?: string;
+
+  // The relationship ID to the JobCategory
+  @Prop({ type: mongoose.Schema.Types.ObjectId, ref: 'JobCategory' })
+  categoryId?: mongoose.Types.ObjectId;
 }
 
 export const JobSchema = SchemaFactory.createForClass(Job);

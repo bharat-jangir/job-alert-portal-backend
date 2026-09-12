@@ -24,6 +24,9 @@ export class RedirectLink {
   @Prop()
   externalUrl?: string; // If redirecting to an external link
 
+  @Prop()
+  tag?: string; // E.g., 'upcoming', 'declared', etc.
+
   @Prop({ required: true, enum: ['internal', 'external'] })
   redirectType: string;
 

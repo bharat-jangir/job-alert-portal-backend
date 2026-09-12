@@ -3,7 +3,7 @@ import { JobsService } from './jobs.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { QueryJobDto } from './dto/query-job.dto';
-import { Job, JobType } from './schemas/job.schema';
+import { Job } from './schemas/job.schema';
 
 // Controller for handling job-related API endpoints
 @Controller('jobs')
@@ -95,7 +95,7 @@ export class JobsController {
 
   // Get jobs by type, returning only title and slug
   @Get('by-type/:type')
-  async findByType(@Param('type') type: JobType) {
+  async findByType(@Param('type') type: string) {
     return this.jobService.findByType(type);
   }
 

@@ -10,11 +10,13 @@ import { RedirectLinkModule } from '../app/common/redirect-link.module';
 import { FaqsModule } from '../app/faqs/faqs.module';
 import { ContactModule } from '../app/contact/contact.module';
 import { OrganizationsModule } from '../app/organizations/organizations.module';
+import { JobCategoriesModule } from '../app/job-categories/job-categories.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: [`.env.${process.env.NODE_ENV || 'development'}`, '.env'],
     }),
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
@@ -30,6 +32,7 @@ import { OrganizationsModule } from '../app/organizations/organizations.module';
     FaqsModule,
     ContactModule,
     OrganizationsModule,
+    JobCategoriesModule,
   ],
   exports: [],
   controllers: [AppController,],

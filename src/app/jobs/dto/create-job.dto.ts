@@ -1,6 +1,6 @@
 import { IsString, IsEnum, IsDate, IsUrl, IsArray, ValidateNested, IsOptional, Matches, Validate, IsBoolean } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ExperienceLevel, QualificationLevel, JobType } from '../schemas/job.schema';
+import { ExperienceLevel, QualificationLevel } from '../schemas/job.schema';
 
 // Custom validator for future dates
 const IsFutureDate = () => {
@@ -112,7 +112,11 @@ export class CreateJobDto {
   @IsOptional()
   sourceUrl?: string;
 
-  @IsEnum(JobType)
+  @IsString()
   @IsOptional()
-  type?: JobType;
+  type?: string;
+
+  @IsString()
+  @IsOptional()
+  categoryId?: string;
 } 

@@ -215,9 +215,14 @@ export class JobsService {
       .exec();
   }
 
-  // Find jobs by type, returning only title and slug
-  async findByType(type: string): Promise<{ title: string; slug: string }[]> {
-    return this.jobModel.find({ type, isActive: true }).select('title slug').exec();
+  // Find jobs by type
+  async findByType(type: string): Promise<any[]> {
+    return this.jobModel
+      .find({ type, isActive: true })
+      .select('title slug location lastDate organization')
+      .populate('organizationId', 'name slug')
+      .sort({ publishedAt: -1, createdAt: -1 })
+      .exec();
   }
 
   // New method: get distinct organizations for homepage

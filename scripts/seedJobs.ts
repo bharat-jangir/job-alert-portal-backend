@@ -2,7 +2,7 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from '../src/app/app.module';
 import { JobsService } from '../src/app/jobs/jobs.service';
-import { JobType, ExperienceLevel, QualificationLevel } from '../src/app/jobs/schemas/job.schema';
+import { ExperienceLevel, QualificationLevel } from '../src/app/jobs/schemas/job.schema';
 
 const BASE_DATE = new Date();
 const future = (days: number) => new Date(BASE_DATE.getTime() + days * 24 * 3600 * 1000).toISOString();
@@ -12,7 +12,7 @@ const seedJobs = [
   {
     title: 'SSC CGL 2025 Online Form',
     slug: 'ssc-cgl-2025-online-form',
-    type: JobType.JOB,
+    type: 'job',
     organization: 'Staff Selection Commission (SSC)',
     location: 'All India',
     salary: '₹25,500 – ₹81,100',
@@ -72,7 +72,7 @@ const seedJobs = [
   {
     title: 'UPSC Civil Services Prelims Result 2025',
     slug: 'upsc-civil-services-prelims-result-2025',
-    type: JobType.RESULT,
+    type: 'result',
     organization: 'Union Public Service Commission (UPSC)',
     location: 'All India',
     salary: 'N/A',
@@ -116,7 +116,7 @@ const seedJobs = [
   {
     title: 'SSC CHSL Answer Key 2025',
     slug: 'ssc-chsl-answer-key-2025',
-    type: JobType.ANSWERKEY,
+    type: 'answer-key',
     organization: 'Staff Selection Commission (SSC)',
     location: 'All India',
     salary: 'N/A',
@@ -161,7 +161,7 @@ const seedJobs = [
   {
     title: 'RRB NTPC Admit Card 2025',
     slug: 'rrb-ntpc-admit-card-2025',
-    type: JobType.ADMITCARD,
+    type: 'admit-card',
     organization: 'Railway Recruitment Board (RRB)',
     location: 'All India',
     salary: 'N/A',
@@ -212,7 +212,7 @@ const seedJobs = [
   {
     title: 'Bihar Police Constable Online Form 2025',
     slug: 'bihar-police-constable-online-form-2025',
-    type: JobType.ONLINEFORM,
+    type: 'online-form',
     organization: 'Bihar Police Subordinate Services Commission (BPSSC)',
     location: 'Bihar',
     salary: '₹21,700 – ₹69,100',
@@ -266,7 +266,7 @@ const seedJobs = [
   {
     title: 'JEE Main 2025 Session 2 Admission Notification',
     slug: 'jee-main-2025-session-2-admission',
-    type: JobType.ADMISSION,
+    type: 'admission',
     organization: 'National Testing Agency (NTA)',
     location: 'All India',
     salary: 'N/A',
@@ -312,7 +312,7 @@ const seedJobs = [
   {
     title: 'IBPS PO 2025 Syllabus & Exam Pattern',
     slug: 'ibps-po-2025-syllabus-exam-pattern',
-    type: JobType.SYLLABUS,
+    type: 'syllabus',
     organization: 'Institute of Banking Personnel Selection (IBPS)',
     location: 'All India',
     salary: 'N/A',
@@ -358,7 +358,7 @@ const seedJobs = [
   {
     title: 'UPSC NDA II 2025 Upcoming Notification',
     slug: 'upsc-nda-ii-2025-upcoming',
-    type: JobType.UPCOMING,
+    type: 'upcoming',
     organization: 'Union Public Service Commission (UPSC)',
     location: 'All India',
     salary: '₹15,600 – ₹39,100',
@@ -406,7 +406,7 @@ const seedJobs = [
   {
     title: 'SSC CGL 2023 Document Verification 2025',
     slug: 'ssc-cgl-2023-document-verification-2025',
-    type: JobType.VERIFICATION,
+    type: 'verification',
     organization: 'Staff Selection Commission (SSC)',
     location: 'All India',
     salary: '₹25,500 – ₹81,100',
@@ -453,7 +453,7 @@ const seedJobs = [
   {
     title: 'PM Kisan Samman Nidhi Yojana – 18th Installment 2025',
     slug: 'pm-kisan-samman-nidhi-yojana-18th-installment-2025',
-    type: JobType.SARKARIYOJANA,
+    type: 'sarkari-yojana',
     organization: 'Ministry of Agriculture, Govt. of India',
     location: 'All India',
     salary: '₹6,000/year',
@@ -505,7 +505,7 @@ const seedJobs = [
   {
     title: 'RRB Group D Recruitment 2025 – Latest Update',
     slug: 'rrb-group-d-recruitment-2025-latest-update',
-    type: JobType.UPDATE,
+    type: 'update',
     organization: 'Railway Recruitment Board (RRB)',
     location: 'All India',
     salary: '₹18,000 – ₹56,900',

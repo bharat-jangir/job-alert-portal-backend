@@ -10,9 +10,9 @@ async function bootstrap() {
     logger: new CustomLogger(),
   });
 
-  // Enable CORS with specific configuration for frontend on port 3000
+  // Enable CORS with specific configuration based on environment
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://127.0.0.1:3000'],
+    origin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : ['http://localhost:3000', 'http://localhost:3001'],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     allowedHeaders: ['Content-Type', 'Authorization', 'Origin', 'Accept'],
     credentials: true,
@@ -36,6 +36,6 @@ async function bootstrap() {
   // Global prefix
   app.setGlobalPrefix('api');
 
-  await app.listen(3001); // Make sure backend is running on port 3001
+  await app.listen(process.env.PORT || 5000);
 }
 bootstrap();
