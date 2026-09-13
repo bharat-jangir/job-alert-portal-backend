@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { AppController } from './app.controller';
@@ -11,6 +11,8 @@ import { FaqsModule } from '../app/faqs/faqs.module';
 import { ContactModule } from '../app/contact/contact.module';
 import { OrganizationsModule } from '../app/organizations/organizations.module';
 import { JobCategoriesModule } from '../app/job-categories/job-categories.module';
+import { RequestLogsModule } from '../app/request-logs/request-logs.module';
+import { RequestLoggerMiddleware } from '../common/middleware/request-logger.middleware';
 
 @Module({
   imports: [
@@ -33,9 +35,14 @@ import { JobCategoriesModule } from '../app/job-categories/job-categories.module
     ContactModule,
     OrganizationsModule,
     JobCategoriesModule,
+    RequestLogsModule,
   ],
   exports: [],
   controllers: [AppController,],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    consumer.apply(RequestLoggerMiddleware).forRoutes('*');
+  }
+}
