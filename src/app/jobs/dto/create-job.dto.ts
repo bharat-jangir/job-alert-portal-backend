@@ -1,18 +1,6 @@
-import { IsString, IsEnum, IsDate, IsUrl, IsArray, ValidateNested, IsOptional, Matches, Validate, IsBoolean } from 'class-validator';
+import { IsString, IsEnum, IsArray, ValidateNested, IsOptional, IsBoolean, IsNotEmpty, IsMongoId } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ExperienceLevel, QualificationLevel } from '../schemas/job.schema';
-
-// Custom validator for future dates
-const IsFutureDate = () => {
-  return function (object: Object, propertyName: string) {
-    return {
-      validator: (value: Date) => {
-        return value > new Date();
-      },
-      message: `${propertyName} must be a future date`
-    };
-  };
-};
 
 class ImportantDateDto {
   @IsString()
@@ -26,12 +14,12 @@ class ImportantDateDto {
 
 export class CreateJobDto {
   @IsString()
-  @IsOptional()
-  title?: string;
+  @IsNotEmpty({ message: 'title is required' })
+  title: string;
 
   @IsString()
-  @IsOptional()
-  slug?: string;
+  @IsNotEmpty({ message: 'slug is required' })
+  slug: string;
 
   @IsString()
   @IsOptional()
@@ -41,13 +29,17 @@ export class CreateJobDto {
   @IsOptional()
   organization?: string;
 
-  @IsString()
+  @IsMongoId()
   @IsOptional()
   organizationId?: string;
 
   @IsBoolean()
   @IsOptional()
   isBulletin?: boolean;
+
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 
   @IsString()
   @IsOptional()
@@ -116,7 +108,7 @@ export class CreateJobDto {
   @IsOptional()
   type?: string;
 
-  @IsString()
+  @IsMongoId()
   @IsOptional()
   categoryId?: string;
-} 
+}

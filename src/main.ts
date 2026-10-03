@@ -10,14 +10,16 @@ async function bootstrap() {
     logger: new CustomLogger(),
   });
 
-  // Enable CORS for Vercel frontends & local development
+  // Enable CORS for frontends & local development
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    process.env.FRONTEND_URL,
+    process.env.ADMIN_FRONTEND_URL,
+  ].filter((url): url is string => Boolean(url));
+
   app.enableCors({
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      // Add your Vercel URLs here later (e.g., 'https://your-admin.vercel.app')
-      /\.vercel\.app$/, // Allows any vercel preview deployment
-    ],
+    origin: allowedOrigins,
     credentials: true,
   });
 

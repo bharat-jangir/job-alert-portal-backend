@@ -1,9 +1,13 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards } from '@nestjs/common';
 import { JobsService } from './jobs.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { QueryJobDto } from './dto/query-job.dto';
 import { Job } from './schemas/job.schema';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { PoliciesGuard } from '../auth/guards/policies.guard';
+import { CheckPolicies } from '../auth/decorators/policies.decorator';
+import { Action, Resource } from '../auth/enums/role.enum';
 
 // Controller for handling job-related API endpoints
 @Controller('jobs')
@@ -11,31 +15,20 @@ export class JobsController {
   // Inject the JobsService to handle business logic
   constructor(private readonly jobService: JobsService) {}
 
+  // === PROTECTED MUTATION ROUTES (require JWT + ABAC) ===
+
   // Create a new job post
   @Post()
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.CREATE, resource: Resource.JOB })
   async create(@Body() createJobDto: CreateJobDto): Promise<Job> {
     return this.jobService.create(createJobDto);
   }
 
-  // Get all jobs with optional query filters (pagination, search, etc.)
-
-  @Get('organizations')
-  async getOrganizations() {
-    return this.jobService.getDistinctOrganizations();
-  }
-  @Get()
-  async findAll(@Query() query: QueryJobDto): Promise<{ jobs: Job[]; total: number }> {
-    return this.jobService.findAll(query);
-  }
-
-  // Get a single job by its ID
-  @Get('id/:id')
-  async findOne(@Param('id') id: string): Promise<Job> {
-    return this.jobService.findOne(id);
-  }
-
   // Update a job by its ID
   @Patch('id/:id')
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.UPDATE, resource: Resource.JOB })
   async update(
     @Param('id') id: string,
     @Body() updateJobDto: UpdateJobDto,
@@ -45,8 +38,37 @@ export class JobsController {
 
   // Delete a job by its ID
   @Delete('id/:id')
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.DELETE, resource: Resource.JOB })
   async remove(@Param('id') id: string): Promise<void> {
     return this.jobService.remove(id);
+  }
+
+  // Toggle bulletin status
+  @Patch('bulletins/:id/toggle')
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.UPDATE, resource: Resource.JOB })
+  async toggleBulletin(@Param('id') id: string): Promise<Job> {
+    return this.jobService.toggleBulletin(id);
+  }
+
+  // === PUBLIC READ ROUTES (no auth required) ===
+
+  @Get('organizations')
+  async getOrganizations() {
+    return this.jobService.getDistinctOrganizations();
+  }
+
+  // Get all jobs with optional query filters (pagination, search, etc.)
+  @Get()
+  async findAll(@Query() query: QueryJobDto): Promise<{ jobs: Job[]; total: number }> {
+    return this.jobService.findAll(query);
+  }
+
+  // Get a single job by its ID
+  @Get('id/:id')
+  async findOne(@Param('id') id: string): Promise<Job> {
+    return this.jobService.findOne(id);
   }
 
   // Increment the view count for a job
@@ -85,7 +107,6 @@ export class JobsController {
     return this.jobService.searchJobs(query);
   }
 
-
   // Get the latest jobs (limit can be specified)
   @Get('latest')
   async findLatestJobs(@Query('limit') limit?: string): Promise<Job[]> {
@@ -99,22 +120,15 @@ export class JobsController {
     return this.jobService.findByType(type);
   }
 
-    // Get jobs marked as bulletin
-    @Get('bulletins')
-    async findBulletins(): Promise<Job[]> {
-      return this.jobService.findBulletins();
-    }
+  // Get jobs marked as bulletin
+  @Get('bulletins')
+  async findBulletins(): Promise<Job[]> {
+    return this.jobService.findBulletins();
+  }
 
-    // Toggle bulletin status
-    @Patch('bulletins/:id/toggle')
-    async toggleBulletin(@Param('id') id: string): Promise<Job> {
-      return this.jobService.toggleBulletin(id);
-    }
-
-    // Get a job by its slug
-    @Get(':slug')
-    async findBySlug(@Param('slug') slug: string): Promise<Job> {
-      return this.jobService.findBySlug(slug);
-    }
-  
-} 
+  // Get a job by its slug
+  @Get(':slug')
+  async findBySlug(@Param('slug') slug: string): Promise<Job> {
+    return this.jobService.findBySlug(slug);
+  }
+}

@@ -6,6 +6,8 @@ import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { QueryJobDto } from './dto/query-job.dto';
 
+import * as sanitizeHtml from 'sanitize-html';
+
 // Service for handling business logic related to jobs
 @Injectable()
 export class JobsService {
@@ -14,9 +16,42 @@ export class JobsService {
     @InjectModel(Job.name) private jobModel: Model<JobDocument>,
   ) {}
 
+  private sanitizePayload<T extends Record<string, any>>(payload: T): T {
+    const sanitized: any = { ...payload };
+    if (sanitized.htmlContent) {
+      sanitized.htmlContent = sanitizeHtml(sanitized.htmlContent, {
+        allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+          'img', 'h1', 'h2', 'span', 'div', 'table', 'thead', 'tbody', 'tr', 'td', 'th', 'iframe'
+        ]),
+        allowedAttributes: {
+          ...sanitizeHtml.defaults.allowedAttributes,
+          '*': ['style', 'class', 'id'],
+          a: ['href', 'name', 'target', 'rel'],
+          img: ['src', 'srcset', 'alt', 'title', 'width', 'height'],
+          iframe: ['src', 'width', 'height', 'frameborder', 'allowfullscreen']
+        }
+      });
+    }
+    if (sanitized.eligibility) {
+      sanitized.eligibility = sanitizeHtml(sanitized.eligibility, {
+        allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+          'img', 'h1', 'h2', 'span', 'div', 'table', 'thead', 'tbody', 'tr', 'td', 'th'
+        ]),
+        allowedAttributes: {
+          ...sanitizeHtml.defaults.allowedAttributes,
+          '*': ['style', 'class', 'id'],
+          a: ['href', 'name', 'target', 'rel'],
+          img: ['src', 'alt']
+        }
+      });
+    }
+    return sanitized as T;
+  }
+
   // Create a new job post
   async create(createJobDto: CreateJobDto): Promise<Job> {
-    const createdJob = new this.jobModel(createJobDto);
+    const sanitizedDto = this.sanitizePayload(createJobDto);
+    const createdJob = new this.jobModel(sanitizedDto);
     return createdJob.save();
   }
 
@@ -76,9 +111,9 @@ export class JobsService {
 
   // Update a job by its ID
   async update(id: string, updateJobDto: UpdateJobDto): Promise<Job> {
-    console.log("post id :",id)
+    const sanitizedDto = this.sanitizePayload(updateJobDto);
     const updatedJob = await this.jobModel
-      .findByIdAndUpdate(id, updateJobDto, { new: true })
+      .findByIdAndUpdate(id, sanitizedDto, { new: true })
       .exec();
     if (!updatedJob) {
       throw new NotFoundException(`Job with ID ${id} not found`);
