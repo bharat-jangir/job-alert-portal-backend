@@ -3,12 +3,23 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { JobCategory, JobCategoryDocument } from './schemas/job-category.schema';
 import { CreateJobCategoryDto, UpdateJobCategoryDto } from './dto/job-category.dto';
+import { Job, JobDocument } from '../jobs/schemas/job.schema';
+import { CacheService } from '../../common/services/cache.service';
+import { RevalidateService } from '../../common/services/revalidate.service';
 
 @Injectable()
 export class JobCategoriesService implements OnModuleInit {
   constructor(
     @InjectModel(JobCategory.name) private jobCategoryModel: Model<JobCategoryDocument>,
+    @InjectModel(Job.name) private jobModel: Model<JobDocument>,
+    private cache: CacheService,
+    private revalidate: RevalidateService,
   ) {}
+
+  private changed() {
+    this.cache.invalidate('jobs:');
+    this.revalidate.trigger({ tags: ['categories', 'home', 'sitemap'] });
+  }
 
   async onModuleInit() {
     const count = await this.jobCategoryModel.countDocuments();
@@ -43,8 +54,9 @@ export class JobCategoriesService implements OnModuleInit {
       createJobCategoryDto.displayName = createJobCategoryDto.name;
     }
 
-    const createdJobCategory = new this.jobCategoryModel(createJobCategoryDto);
-    return createdJobCategory.save();
+    const created = await new this.jobCategoryModel(createJobCategoryDto).save();
+    this.changed();
+    return created;
   }
 
   async findAllActive(): Promise<JobCategory[]> {
@@ -64,18 +76,31 @@ export class JobCategoriesService implements OnModuleInit {
   }
 
   async update(id: string, updateJobCategoryDto: UpdateJobCategoryDto): Promise<JobCategory> {
+    if (updateJobCategoryDto.slug) {
+      // posts store the category slug as `type`, so renaming it would orphan them
+      const current = await this.jobCategoryModel.findById(id).lean();
+      if (current && current.slug !== updateJobCategoryDto.slug && (await this.jobModel.exists({ type: current.slug }))) {
+        throw new ConflictException('Cannot change the slug of a category that already has posts');
+      }
+    }
     const category = await this.jobCategoryModel.findByIdAndUpdate(id, updateJobCategoryDto, { new: true }).exec();
     if (!category) {
       throw new NotFoundException(`JobCategory with ID "${id}" not found`);
     }
+    this.changed();
     return category;
   }
 
   async softDelete(id: string): Promise<JobCategory> {
+    const existing = await this.jobCategoryModel.findById(id).lean();
+    if (existing && (await this.jobModel.exists({ type: existing.slug }))) {
+      throw new ConflictException('This category has posts. Move or delete them first.');
+    }
     const category = await this.jobCategoryModel.findByIdAndUpdate(id, { isDeleted: true }, { new: true }).exec();
     if (!category) {
       throw new NotFoundException(`JobCategory with ID "${id}" not found`);
     }
+    this.changed();
     return category;
   }
 
@@ -114,6 +139,7 @@ export class JobCategoriesService implements OnModuleInit {
       await this.jobCategoryModel.bulkWrite(bulkOps);
     }
 
+    this.changed();
     return this.findAllActive();
   }
 }

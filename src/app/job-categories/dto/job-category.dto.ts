@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsBoolean, IsOptional, IsNotEmpty } from 'class-validator';
+import { IsString, IsNumber, IsBoolean, IsOptional, IsNotEmpty, Matches, MaxLength } from 'class-validator';
 
 export class CreateJobCategoryDto {
   @IsString()
@@ -11,6 +11,8 @@ export class CreateJobCategoryDto {
 
   @IsString()
   @IsNotEmpty()
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: 'slug must be lowercase letters, numbers and hyphens' })
+  @MaxLength(120)
   slug: string;
 
   @IsNumber()
@@ -37,6 +39,8 @@ export class UpdateJobCategoryDto {
 
   @IsString()
   @IsOptional()
+  @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: 'slug must be lowercase letters, numbers and hyphens' })
+  @MaxLength(120)
   slug?: string;
 
   @IsNumber()

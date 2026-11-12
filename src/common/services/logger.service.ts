@@ -19,9 +19,9 @@ export class CustomLogger implements LoggerService {
           format: format.combine(
             format.colorize(),
             format.printf(({ context, level, message, timestamp, ...meta }) => {
-              return `${timestamp} [${context}] ${level}: ${message} ${
-                Object.keys(meta).length ? JSON.stringify(meta, null, 2) : ''
-              }`;
+              delete (meta as any).ms;
+              const extra = Object.keys(meta).length ? ' ' + JSON.stringify(meta) : '';
+              return `${timestamp} [${context ?? 'App'}] ${level}: ${message}${extra}`;
             }),
           ),
         }),
@@ -40,27 +40,47 @@ export class CustomLogger implements LoggerService {
     this.context = context;
   }
 
-  log(message: string, meta?: any) {
-    this.logger.info(message, { context: this.context, ...meta });
+  /**
+   * Nest calls log(message, 'ContextName') with a plain-string context.
+   * Accept either a string (context) or an object (extra metadata).
+   */
+  private meta(extra: unknown[]): Record<string, unknown> {
+    let context = this.context;
+    let meta: Record<string, unknown> = {};
+    for (const e of extra) {
+      if (typeof e === 'string') context = e;
+      else if (e && typeof e === 'object') meta = { ...meta, ...(e as object) };
+    }
+    return { context, ...meta };
   }
 
-  error(message: string, trace?: string, meta?: any) {
-    this.logger.error(message, {
-      context: this.context,
-      trace,
-      ...meta,
+  log(message: any, ...extra: unknown[]) {
+    this.logger.info(this.str(message), this.meta(extra));
+  }
+
+  /** Nest signature: error(message, stack?, context?) */
+  error(message: any, ...extra: unknown[]) {
+    const [first, ...rest] = extra;
+    const trace = typeof first === 'string' && rest.length ? first : undefined;
+    this.logger.error(this.str(message), {
+      ...this.meta(trace ? rest : extra),
+      ...(trace ? { trace } : {}),
     });
   }
 
-  warn(message: string, meta?: any) {
-    this.logger.warn(message, { context: this.context, ...meta });
+  warn(message: any, ...extra: unknown[]) {
+    this.logger.warn(this.str(message), this.meta(extra));
   }
 
-  debug(message: string, meta?: any) {
-    this.logger.debug(message, { context: this.context, ...meta });
+  debug(message: any, ...extra: unknown[]) {
+    this.logger.debug(this.str(message), this.meta(extra));
   }
 
-  verbose(message: string, meta?: any) {
-    this.logger.verbose(message, { context: this.context, ...meta });
+  verbose(message: any, ...extra: unknown[]) {
+    this.logger.verbose(this.str(message), this.meta(extra));
   }
-} 
+
+  private str(m: any): string {
+    return typeof m === 'string' ? m : JSON.stringify(m);
+  }
+}

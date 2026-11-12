@@ -1,5 +1,8 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards } from '@nestjs/common';
-import { JobsService } from './jobs.service';
+import {
+  Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards, Req, HttpCode, HttpStatus,
+} from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+import { JobsService, Actor } from './jobs.service';
 import { CreateJobDto } from './dto/create-job.dto';
 import { UpdateJobDto } from './dto/update-job.dto';
 import { QueryJobDto } from './dto/query-job.dto';
@@ -7,128 +10,191 @@ import { Job } from './schemas/job.schema';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PoliciesGuard } from '../auth/guards/policies.guard';
 import { CheckPolicies } from '../auth/decorators/policies.decorator';
-import { Action, Resource } from '../auth/enums/role.enum';
+import { Action, AdminRole, Resource, hasPermission } from '../auth/enums/role.enum';
 
-// Controller for handling job-related API endpoints
+/** Builds the acting user for the service; PUBLISH comes straight from the role policies. */
+function actorFrom(req: any): Actor {
+  const role = req.user?.role as AdminRole;
+  return {
+    id: req.user?.id,
+    email: req.user?.email,
+    role,
+    canPublish: !!role && hasPermission(role, Action.PUBLISH, Resource.JOB),
+  };
+}
+
+/**
+ * Route order matters: static paths first, `:slug` last.
+ * Mutations and anything that can expose non-public content require JWT + policy.
+ */
 @Controller('jobs')
 export class JobsController {
-  // Inject the JobsService to handle business logic
   constructor(private readonly jobService: JobsService) {}
 
-  // === PROTECTED MUTATION ROUTES (require JWT + ABAC) ===
+  // === PROTECTED (JWT + policies) ===
 
-  // Create a new job post
   @Post()
   @UseGuards(JwtAuthGuard, PoliciesGuard)
   @CheckPolicies({ action: Action.CREATE, resource: Resource.JOB })
-  async create(@Body() createJobDto: CreateJobDto): Promise<Job> {
-    return this.jobService.create(createJobDto);
+  create(@Body() dto: CreateJobDto, @Req() req: any): Promise<Job> {
+    return this.jobService.create(dto, actorFrom(req));
   }
 
-  // Update a job by its ID
-  @Patch('id/:id')
+  /** All statuses (drafts included) for the admin list. */
+  @Get('admin/list')
   @UseGuards(JwtAuthGuard, PoliciesGuard)
-  @CheckPolicies({ action: Action.UPDATE, resource: Resource.JOB })
-  async update(
-    @Param('id') id: string,
-    @Body() updateJobDto: UpdateJobDto,
-  ): Promise<Job> {
-    return this.jobService.update(id, updateJobDto);
+  @CheckPolicies({ action: Action.READ, resource: Resource.JOB })
+  adminList(@Query() query: QueryJobDto) {
+    return this.jobService.adminList(query);
   }
 
-  // Delete a job by its ID
-  @Delete('id/:id')
+  /** Dashboard numbers. */
+  @Get('stats')
   @UseGuards(JwtAuthGuard, PoliciesGuard)
-  @CheckPolicies({ action: Action.DELETE, resource: Resource.JOB })
-  async remove(@Param('id') id: string): Promise<void> {
-    return this.jobService.remove(id);
+  @CheckPolicies({ action: Action.READ, resource: Resource.JOB })
+  stats() {
+    return this.jobService.stats();
   }
 
-  // Toggle bulletin status
-  @Patch('bulletins/:id/toggle')
-  @UseGuards(JwtAuthGuard, PoliciesGuard)
-  @CheckPolicies({ action: Action.UPDATE, resource: Resource.JOB })
-  async toggleBulletin(@Param('id') id: string): Promise<Job> {
-    return this.jobService.toggleBulletin(id);
-  }
-
-  // === PUBLIC READ ROUTES (no auth required) ===
-
-  @Get('organizations')
-  async getOrganizations() {
-    return this.jobService.getDistinctOrganizations();
-  }
-
-  // Get all jobs with optional query filters (pagination, search, etc.)
-  @Get()
-  async findAll(@Query() query: QueryJobDto): Promise<{ jobs: Job[]; total: number }> {
-    return this.jobService.findAll(query);
-  }
-
-  // Get a single job by its ID
+  /** Single post by ID in any status (admin edit screen). */
   @Get('id/:id')
-  async findOne(@Param('id') id: string): Promise<Job> {
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.READ, resource: Resource.JOB })
+  findOne(@Param('id') id: string): Promise<Job> {
     return this.jobService.findOne(id);
   }
 
-  // Increment the view count for a job
+  @Patch('id/:id')
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.UPDATE, resource: Resource.JOB })
+  update(@Param('id') id: string, @Body() dto: UpdateJobDto, @Req() req: any): Promise<Job> {
+    return this.jobService.update(id, dto, actorFrom(req));
+  }
+
+  @Post('id/:id/duplicate')
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.CREATE, resource: Resource.JOB })
+  duplicate(@Param('id') id: string, @Req() req: any): Promise<Job> {
+    return this.jobService.duplicate(id, actorFrom(req));
+  }
+
+  @Delete('id/:id')
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.DELETE, resource: Resource.JOB })
+  remove(@Param('id') id: string): Promise<void> {
+    return this.jobService.remove(id);
+  }
+
+  @Get('id/:id/revisions')
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.READ, resource: Resource.JOB })
+  revisions(@Param('id') id: string) {
+    return this.jobService.listRevisions(id);
+  }
+
+  @Post('id/:id/revisions/:revisionId/restore')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.UPDATE, resource: Resource.JOB })
+  restore(@Param('id') id: string, @Param('revisionId') revisionId: string, @Req() req: any) {
+    return this.jobService.restoreRevision(id, revisionId, actorFrom(req));
+  }
+
+  @Patch('bulletins/:id/toggle')
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.UPDATE, resource: Resource.JOB })
+  toggleBulletin(@Param('id') id: string): Promise<Job> {
+    return this.jobService.toggleBulletin(id);
+  }
+
+  // === PUBLIC READS (published posts only) ===
+
+  @Get('organizations')
+  getOrganizations() {
+    return this.jobService.getDistinctOrganizations();
+  }
+
+  @Get()
+  findAll(@Query() query: QueryJobDto) {
+    return this.jobService.findAll(query);
+  }
+
+  /** Homepage aggregate: bulletins, popular and one list per category. Cached 30s. */
+  @Get('home')
+  home() {
+    return this.jobService.home();
+  }
+
+  @Get('facets')
+  facets() {
+    return this.jobService.facets();
+  }
+
+  @Get('sitemap')
+  sitemap() {
+    return this.jobService.sitemap();
+  }
+
+  // Batched in memory and rate-limited.
   @Post('id/:id/view')
-  async incrementViews(@Param('id') id: string): Promise<Job> {
-    return this.jobService.incrementViews(id);
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @HttpCode(HttpStatus.ACCEPTED)
+  incrementViews(@Param('id') id: string) {
+    this.jobService.trackView(id);
+    return { ok: true };
   }
 
-  // Increment the applications count for a job
   @Post('id/:id/apply')
-  async incrementApplications(@Param('id') id: string): Promise<Job> {
-    return this.jobService.incrementApplications(id);
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  @HttpCode(HttpStatus.ACCEPTED)
+  incrementApplications(@Param('id') id: string) {
+    this.jobService.trackApply(id);
+    return { ok: true };
   }
 
-  // Get jobs with upcoming deadlines
   @Get('upcoming')
-  async findUpcomingDeadlines(): Promise<Job[]> {
+  findUpcomingDeadlines(): Promise<Job[]> {
     return this.jobService.findUpcomingDeadlines();
   }
 
-  // Get popular jobs (by views and applications)
   @Get('popular')
-  async findPopularJobs(): Promise<Job[]> {
+  findPopularJobs(): Promise<Job[]> {
     return this.jobService.findPopularJobs();
   }
 
-  // Get jobs by organization
   @Get('organization/:organization')
-  async findJobsByOrganization(@Param('organization') organization: string): Promise<Job[]> {
+  findJobsByOrganization(@Param('organization') organization: string): Promise<Job[]> {
     return this.jobService.findJobsByOrganization(organization);
   }
-  
-  // Search jobs by a query string
+
   @Get('search')
-  async searchJobs(@Query('q') query: string): Promise<Job[]> {
+  searchJobs(@Query('q') query: string) {
     return this.jobService.searchJobs(query);
   }
 
-  // Get the latest jobs (limit can be specified)
   @Get('latest')
-  async findLatestJobs(@Query('limit') limit?: string): Promise<Job[]> {
-    const limitNumber = limit ? parseInt(limit, 10) : 15;
-    return this.jobService.findLatestJobs(limitNumber);
+  findLatestJobs(@Query('limit') limit?: string): Promise<Job[]> {
+    return this.jobService.findLatestJobs(limit ? parseInt(limit, 10) : 15);
   }
 
-  // Get jobs by type, returning only title and slug
   @Get('by-type/:type')
-  async findByType(@Param('type') type: string) {
+  findByType(@Param('type') type: string) {
     return this.jobService.findByType(type);
   }
 
-  // Get jobs marked as bulletin
   @Get('bulletins')
-  async findBulletins(): Promise<Job[]> {
+  findBulletins(): Promise<Job[]> {
     return this.jobService.findBulletins();
   }
 
-  // Get a job by its slug
+  @Get(':slug/related')
+  findRelated(@Param('slug') slug: string) {
+    return this.jobService.findRelated(slug);
+  }
+
+  // Must stay last.
   @Get(':slug')
-  async findBySlug(@Param('slug') slug: string): Promise<Job> {
+  findBySlug(@Param('slug') slug: string): Promise<Job> {
     return this.jobService.findBySlug(slug);
   }
 }

@@ -20,11 +20,9 @@ export class BasePost {
   @Prop({ default: [] })
   tags: string[];
 
-  @Prop({ default: Date.now })
-  publishedAt: Date;
-
-  @Prop({ default: Date.now })
-  updatedAt: Date;
+  /** Set the first time a post goes live (see JobsService). Not defaulted so drafts have none. */
+  @Prop()
+  publishedAt?: Date;
 
   @Prop()
   sourceUrl: string;

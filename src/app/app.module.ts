@@ -1,6 +1,11 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
+import { ScheduleModule } from '@nestjs/schedule';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { APP_GUARD } from '@nestjs/core';
+import { CommonModule } from '../common/common.module';
+import { HealthController } from './health/health.controller';
 import { AppController } from './app.controller';
 import { AppService } from '../app/app.service';
 import { JobsModule } from '../app/jobs/jobs.module';
@@ -19,11 +24,25 @@ import { RequestLoggerMiddleware } from '../common/middleware/request-logger.mid
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: [`.env.${process.env.NODE_ENV || 'development'}`, '.env'],
+      validate: (env: Record<string, any>) => {
+        const missing = ['MONGODB_URI', 'JWT_SECRET'].filter((k) => !env[k]);
+        if (missing.length) throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
+        if (env.NODE_ENV === 'production' && String(env.JWT_SECRET).length < 32) {
+          throw new Error('JWT_SECRET must be at least 32 characters in production');
+        }
+        return env;
+      },
     }),
+    ScheduleModule.forRoot(),
+    // default: 120 requests / minute / IP; sensitive routes tighten this with @Throttle
+    ThrottlerModule.forRoot({ throttlers: [{ ttl: 60_000, limit: 120 }] }),
+    CommonModule,
     MongooseModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
         uri: configService.get<string>('MONGODB_URI'),
+        maxPoolSize: 20,
+        serverSelectionTimeoutMS: 8000,
       }),
       inject: [ConfigService],
     }),
@@ -38,8 +57,8 @@ import { RequestLoggerMiddleware } from '../common/middleware/request-logger.mid
     RequestLogsModule,
   ],
   exports: [],
-  controllers: [AppController,],
-  providers: [AppService],
+  controllers: [AppController, HealthController],
+  providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

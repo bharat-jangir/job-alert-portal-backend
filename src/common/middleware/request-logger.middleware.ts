@@ -15,14 +15,19 @@ export class RequestLoggerMiddleware implements NestMiddleware {
     let sanitizedBody = {};
     if (body) {
       sanitizedBody = { ...body };
-      if (sanitizedBody['password']) {
-        sanitizedBody['password'] = '***';
+      for (const key of ['password', 'currentPassword', 'newPassword', 'token', 'access_token']) {
+        if (sanitizedBody[key]) sanitizedBody[key] = '***';
       }
+      // post bodies can be huge (HTML); keep the log small
+      if (typeof sanitizedBody['htmlContent'] === 'string') sanitizedBody['htmlContent'] = '[omitted]';
+      if (sanitizedBody['sections']) sanitizedBody['sections'] = '[omitted]';
     }
 
     res.on('finish', () => {
       const { statusCode } = res;
       const responseTime = Date.now() - startTime;
+      // Public page reads are high-volume and low-value: only log writes and failures.
+      if (method === 'GET' && statusCode < 400) return;
 
       this.requestLogsService.createLog({
         method,

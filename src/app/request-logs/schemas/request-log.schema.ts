@@ -29,3 +29,5 @@ export class RequestLog extends Document {
 }
 
 export const RequestLogSchema = SchemaFactory.createForClass(RequestLog);
+// Keep 14 days of logs; without a TTL this collection grows forever.
+RequestLogSchema.index({ createdAt: 1 }, { expireAfterSeconds: 14 * 24 * 60 * 60 });
