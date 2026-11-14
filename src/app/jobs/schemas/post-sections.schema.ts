@@ -21,20 +21,45 @@ const embedUrl = url
   // www.google.com is only allowed for the Maps embed path, not arbitrary Google pages
   .refine((u) => { try { const x = new URL(u); return x.hostname !== 'www.google.com' || x.pathname.startsWith('/maps/embed'); } catch { return false; } }, { message: 'only google.com/maps/embed links are allowed on www.google.com' });
 
+/**
+ * Styling and design options for individual sections / blocks.
+ * Enables visual customization (colors, borders, spacing) as well as custom Tailwind / CSS classes and inline CSS rules.
+ */
+export const BlockStylesSchema = z.object({
+  textColor: z.string().max(50).optional(),
+  bgColor: z.string().max(50).optional(),
+  borderColor: z.string().max(50).optional(),
+  borderWidth: z.string().max(20).optional(),
+  borderStyle: z.enum(['none', 'solid', 'dashed', 'dotted', 'double']).optional(),
+  borderRadius: z.string().max(20).optional(),
+  padding: z.string().max(30).optional(),
+  margin: z.string().max(30).optional(),
+  fontSize: z.string().max(30).optional(),
+  fontWeight: z.string().max(20).optional(),
+  textAlign: z.enum(['left', 'center', 'right', 'justify']).optional(),
+  className: z.string().max(500).optional(),
+  customCss: z.string().max(2000).refine((css) => {
+    const lower = css.toLowerCase();
+    return !lower.includes('javascript:') && !lower.includes('expression(') && !lower.includes('<script');
+  }, { message: 'customCss contains disallowed patterns' }).optional(),
+}).optional();
+
+export type BlockStyles = z.infer<typeof BlockStylesSchema>;
+
 /** Blocks allowed inside a column (no nesting of columns, no raw html/toc/embeds). */
 const leafOptions = [
-  z.object({ type: z.literal('paragraph'), text }),
-  z.object({ type: z.literal('heading'), level: z.union([z.literal(2), z.literal(3), z.literal(4)]).default(3), text: short }),
-  z.object({ type: z.literal('list'), title: short.optional(), ordered: z.boolean().default(false), items: z.array(z.string().max(2000)).max(100) }),
-  z.object({ type: z.literal('steps'), title: short.optional(), items: z.array(z.string().max(2000)).max(50) }),
-  z.object({ type: z.literal('image'), src: url, alt: z.string().max(300).default(''), caption: z.string().max(500).optional(), width: z.number().int().min(1).max(10000).optional(), height: z.number().int().min(1).max(10000).optional(), link: url.optional() }),
-  z.object({ type: z.literal('button'), label: short, url, style: z.enum(['primary', 'secondary', 'outline']).default('primary'), align: align.default('left') }),
-  z.object({ type: z.literal('keyvalue'), title: short.optional(), items: z.array(z.object({ label: short, value: z.string().max(2000) })).max(100) }),
-  z.object({ type: z.literal('callout'), tone: z.enum(['info', 'warning', 'success']).default('info'), text }),
-  z.object({ type: z.literal('quote'), text, cite: short.optional(), style: z.enum(['quote', 'pull']).default('quote') }),
-  z.object({ type: z.literal('links'), title: short.optional(), items: z.array(z.object({ label: short, url })).max(50) }),
-  z.object({ type: z.literal('download'), label: short, url, fileType: z.string().max(20).optional(), size: z.string().max(30).optional() }),
-  z.object({ type: z.literal('separator'), style: z.enum(['line', 'dots', 'space']).default('line') }),
+  z.object({ type: z.literal('paragraph'), text, styles: BlockStylesSchema }),
+  z.object({ type: z.literal('heading'), level: z.union([z.literal(2), z.literal(3), z.literal(4)]).default(3), text: short, styles: BlockStylesSchema }),
+  z.object({ type: z.literal('list'), title: short.optional(), ordered: z.boolean().default(false), items: z.array(z.string().max(2000)).max(100), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('steps'), title: short.optional(), items: z.array(z.string().max(2000)).max(50), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('image'), src: url, alt: z.string().max(300).default(''), caption: z.string().max(500).optional(), width: z.number().int().min(1).max(10000).optional(), height: z.number().int().min(1).max(10000).optional(), link: url.optional(), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('button'), label: short, url, style: z.enum(['primary', 'secondary', 'outline']).default('primary'), align: align.default('left'), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('keyvalue'), title: short.optional(), items: z.array(z.object({ label: short, value: z.string().max(2000) })).max(100), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('callout'), tone: z.enum(['info', 'warning', 'success']).default('info'), text, styles: BlockStylesSchema }),
+  z.object({ type: z.literal('quote'), text, cite: short.optional(), style: z.enum(['quote', 'pull']).default('quote'), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('links'), title: short.optional(), items: z.array(z.object({ label: short, url })).max(50), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('download'), label: short, url, fileType: z.string().max(20).optional(), size: z.string().max(30).optional(), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('separator'), style: z.enum(['line', 'dots', 'space']).default('line'), styles: BlockStylesSchema }),
 ] as const;
 export const LeafSchema = z.discriminatedUnion('type', [...leafOptions]);
 
@@ -46,34 +71,39 @@ export const SectionSchema = z.discriminatedUnion('type', [
     headers: z.array(z.string().max(200)).max(12),
     rows: z.array(z.array(z.string().max(2000)).max(12)).max(300),
     align: z.array(align).max(12).optional(),
+    styles: BlockStylesSchema,
   }),
   z.object({
     type: z.literal('faq'),
     title: short.optional(),
     items: z.array(z.object({ question: short, answer: z.string().max(5000) })).max(50),
+    styles: BlockStylesSchema,
   }),
   z.object({
     type: z.literal('accordion'),
     title: short.optional(),
     items: z.array(z.object({ title: short, content: z.string().max(5000) })).max(50),
+    styles: BlockStylesSchema,
   }),
   z.object({
     type: z.literal('timeline'),
     title: short.optional(),
     items: z.array(z.object({ date: short, title: short, text: z.string().max(2000).optional() })).max(100),
+    styles: BlockStylesSchema,
   }),
-  z.object({ type: z.literal('gallery'), title: short.optional(), images: z.array(z.object({ src: url, alt: z.string().max(300).default(''), caption: z.string().max(500).optional() })).max(40) }),
-  z.object({ type: z.literal('video'), url: videoUrl, title: short, caption: z.string().max(500).optional() }),
-  z.object({ type: z.literal('audio'), src: url, title: short.optional() }),
-  z.object({ type: z.literal('embed'), url: embedUrl, title: short, caption: z.string().max(500).optional(), height: z.number().int().min(100).max(1500).default(500) }),
-  z.object({ type: z.literal('code'), code: z.string().max(50_000), language: z.string().max(30).optional() }),
-  z.object({ type: z.literal('toc'), title: short.optional() }),
-  z.object({ type: z.literal('ad'), slot: z.string().regex(/^[a-z0-9-]{1,40}$/, 'ad slot must be lowercase letters, numbers and hyphens') }),
+  z.object({ type: z.literal('gallery'), title: short.optional(), images: z.array(z.object({ src: url, alt: z.string().max(300).default(''), caption: z.string().max(500).optional() })).max(40), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('video'), url: videoUrl, title: short, caption: z.string().max(500).optional(), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('audio'), src: url, title: short.optional(), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('embed'), url: embedUrl, title: short, caption: z.string().max(500).optional(), height: z.number().int().min(100).max(1500).default(500), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('code'), code: z.string().max(50_000), language: z.string().max(30).optional(), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('toc'), title: short.optional(), styles: BlockStylesSchema }),
+  z.object({ type: z.literal('ad'), slot: z.string().regex(/^[a-z0-9-]{1,40}$/, 'ad slot must be lowercase letters, numbers and hyphens'), styles: BlockStylesSchema }),
   z.object({
     type: z.literal('columns'),
     columns: z.array(z.object({ blocks: z.array(LeafSchema).max(30) })).min(2).max(4),
+    styles: BlockStylesSchema,
   }),
-  z.object({ type: z.literal('html'), html: z.string().max(200_000) }),
+  z.object({ type: z.literal('html'), html: z.string().max(200_000), styles: BlockStylesSchema }),
 ]);
 
 export const SectionsSchema = z.array(SectionSchema).max(150);
