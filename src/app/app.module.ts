@@ -17,6 +17,7 @@ import { ContactModule } from '../app/contact/contact.module';
 import { OrganizationsModule } from '../app/organizations/organizations.module';
 import { JobCategoriesModule } from '../app/job-categories/job-categories.module';
 import { RequestLogsModule } from '../app/request-logs/request-logs.module';
+import { ScraperModule } from '../app/scraper/scraper.module';
 import { RequestLoggerMiddleware } from '../common/middleware/request-logger.middleware';
 
 @Module({
@@ -55,6 +56,7 @@ import { RequestLoggerMiddleware } from '../common/middleware/request-logger.mid
     OrganizationsModule,
     JobCategoriesModule,
     RequestLogsModule,
+    ScraperModule,
   ],
   exports: [],
   controllers: [AppController, HealthController],
