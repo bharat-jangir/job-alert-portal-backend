@@ -317,12 +317,25 @@ STRICT SEO & STRUCTURE GUIDELINES:
       .replace(/^-+|-+$/g, '')
       .slice(0, 100);
 
-    // Best apply link resolution
+    // Best action link resolution (adapts to post type: admit-card, result, answer-key, etc.)
+    const effectiveType = (preferredPostType || parsed.type || 'job').toLowerCase();
     let finalApplyLink = this.normalizeUrl(parsed.applyLink);
     if (!finalApplyLink || finalApplyLink.includes('google_vignette')) {
-      const match = scraped.detectedLinks?.find((l) =>
-        /apply|online form|registration|login/i.test(l.label),
-      );
+      let match;
+      if (effectiveType === 'admit-card') {
+        match = scraped.detectedLinks?.find((l) => /admit card|hall ticket|call letter/i.test(l.label));
+      } else if (effectiveType === 'result') {
+        match = scraped.detectedLinks?.find((l) => /result|score card|merit list|marks/i.test(l.label));
+      } else if (effectiveType === 'answer-key') {
+        match = scraped.detectedLinks?.find((l) => /answer key|ans key|objection/i.test(l.label));
+      } else if (effectiveType === 'syllabus') {
+        match = scraped.detectedLinks?.find((l) => /syllabus|exam pattern/i.test(l.label));
+      }
+      if (!match) {
+        match = scraped.detectedLinks?.find((l) =>
+          /apply|online form|registration|login|download|click here/i.test(l.label),
+        );
+      }
       finalApplyLink = match?.url || sourceUrl;
     }
 
