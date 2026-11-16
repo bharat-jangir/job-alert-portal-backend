@@ -21,30 +21,9 @@ const embedUrl = url
   // www.google.com is only allowed for the Maps embed path, not arbitrary Google pages
   .refine((u) => { try { const x = new URL(u); return x.hostname !== 'www.google.com' || x.pathname.startsWith('/maps/embed'); } catch { return false; } }, { message: 'only google.com/maps/embed links are allowed on www.google.com' });
 
-/**
- * Styling and design options for individual sections / blocks.
- * Enables visual customization (colors, borders, spacing) as well as custom Tailwind / CSS classes and inline CSS rules.
- */
-export const BlockStylesSchema = z.object({
-  textColor: z.string().max(50).optional(),
-  bgColor: z.string().max(50).optional(),
-  borderColor: z.string().max(50).optional(),
-  borderWidth: z.string().max(20).optional(),
-  borderStyle: z.enum(['none', 'solid', 'dashed', 'dotted', 'double']).optional(),
-  borderRadius: z.string().max(20).optional(),
-  padding: z.string().max(30).optional(),
-  margin: z.string().max(30).optional(),
-  fontSize: z.string().max(30).optional(),
-  fontWeight: z.string().max(20).optional(),
-  textAlign: z.enum(['left', 'center', 'right', 'justify']).optional(),
-  className: z.string().max(500).optional(),
-  customCss: z.string().max(2000).refine((css) => {
-    const lower = css.toLowerCase();
-    return !lower.includes('javascript:') && !lower.includes('expression(') && !lower.includes('<script');
-  }, { message: 'customCss contains disallowed patterns' }).optional(),
-}).optional();
-
-export type BlockStyles = z.infer<typeof BlockStylesSchema>;
+import { BlockStylesSchema, BlockStyles } from './block-styles';
+export { BlockStylesSchema };
+export type { BlockStyles };
 
 /** Blocks allowed inside a column (no nesting of columns, no raw html/toc/embeds). */
 const leafOptions = [

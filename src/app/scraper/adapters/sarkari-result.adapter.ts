@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import * as cheerio from 'cheerio';
 import { ISiteAdapter, DiscoveredCandidate } from './site-adapter.interface';
+import { safeFetch, decodeBody } from '../../../common/utils/safe-fetch';
+import { CRAWLER_USER_AGENT } from '../scraper.service';
 
 @Injectable()
 export class SarkariResultAdapter implements ISiteAdapter {
@@ -9,6 +11,7 @@ export class SarkariResultAdapter implements ISiteAdapter {
   readonly adapterKey = 'sarkariresult';
   readonly name = 'SarkariResult.com';
   readonly baseUrl = 'https://www.sarkariresult.com';
+  readonly ownDomains = ['sarkariresult.com'];
 
   /**
    * Discovers candidates from SarkariResult homepage and primary sections
@@ -16,20 +19,20 @@ export class SarkariResultAdapter implements ISiteAdapter {
   async discoverCandidates(limit = 60): Promise<DiscoveredCandidate[]> {
     this.logger.log(`Starting candidate discovery on ${this.baseUrl}...`);
     try {
-      const response = await fetch(this.baseUrl, {
+      const response = await safeFetch(this.baseUrl, {
+        timeoutMs: 20_000,
         headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+          'User-Agent': CRAWLER_USER_AGENT,
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9,hi;q=0.8',
         },
       });
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch ${this.baseUrl}: HTTP ${response.status} ${response.statusText}`);
+      if (response.status < 200 || response.status >= 300) {
+        throw new Error(`Failed to fetch ${this.baseUrl}: HTTP ${response.status}`);
       }
 
-      const html = await response.text();
+      const html = decodeBody(response);
       const $ = cheerio.load(html);
       const candidatesMap = new Map<string, DiscoveredCandidate>();
 
@@ -49,9 +52,13 @@ export class SarkariResultAdapter implements ISiteAdapter {
         const cleanUrl = href.split('#')[0];
 
         // Filter: Must be an article / post link on sarkariresult (e.g. /202X/)
+        let host = '';
+        try { host = new URL(cleanUrl).hostname.toLowerCase(); } catch { return; }
+        const onSite = host === 'sarkariresult.com' || host.endsWith('.sarkariresult.com');
         const isPostUrl =
-          cleanUrl.includes('sarkariresult.com/202') ||
-          (cleanUrl.includes('sarkariresult.com') && /\/(latestjob|admitcard|result|admission|syllabus)\/[a-z0-9-]+/i.test(cleanUrl));
+          onSite &&
+          (cleanUrl.includes('sarkariresult.com/202') ||
+            /\/(latestjob|admitcard|result|admission|syllabus)\/[a-z0-9-]+/i.test(cleanUrl));
 
         // Skip homepage, category archives, external social links
         const isExcluded =

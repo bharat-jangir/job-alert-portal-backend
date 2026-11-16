@@ -245,6 +245,13 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
   }
 
   /** By ID, any status (admin edit screen). */
+  /** True if a post (any status) already uses this source URL or has exactly this title. */
+  async hasDuplicate(title: string, sourceUrl?: string): Promise<boolean> {
+    const or: any[] = [{ title: new RegExp(`^${escapeRegex(title.trim())}$`, 'i') }];
+    if (sourceUrl) or.push({ sourceUrl });
+    return !!(await this.jobModel.exists({ $or: or }));
+  }
+
   async findOne(id: string): Promise<Job> {
     const job = await this.jobModel.findById(id).populate('organizationId').exec();
     if (!job) throw new NotFoundException(`Job with ID ${id} not found`);

@@ -4,8 +4,12 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as cheerio from 'cheerio';
 import { JobsService, Actor } from '../jobs/jobs.service';
 import { CreateJobDto } from '../jobs/dto/create-job.dto';
-import { SectionSchema, SectionsSchema, Section, BlockStyles } from '../jobs/schemas/post-sections.schema';
+import { SectionSchema, SectionsSchema, Section, BlockStyles, BlockStylesSchema } from '../jobs/schemas/post-sections.schema';
 import { ExperienceLevel, QualificationLevel } from '../jobs/schemas/job.schema';
+import { safeFetch, decodeBody, UnsafeUrlError, ResponseTooLargeError } from '../../common/utils/safe-fetch';
+
+/** Override with CRAWLER_USER_AGENT (e.g. add a contact URL for site owners). */
+export const CRAWLER_USER_AGENT = process.env.CRAWLER_USER_AGENT || 'Mozilla/5.0 (compatible; JobAlertBot/1.0)';
 
 export interface ExtractedJobResult {
   title: string;
@@ -30,6 +34,10 @@ export interface ExtractedJobResult {
   tags?: string[];
   sourceUrl: string;
   sections: Section[];
+  /** Model's self-reported certainty (0-100) that every field is supported by the source. */
+  confidence?: number;
+  /** Fields the model had to guess or could not find. */
+  uncertainFields?: string[];
 }
 
 interface ScrapedContent {
@@ -54,7 +62,7 @@ export class ScraperService {
       process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY;
 
-    if (apiKey && apiKey !== 'your-google-api-key') {
+    if (apiKey && !/^your-(google|gemini)-api-key$/.test(apiKey)) {
       this.genAI = new GoogleGenerativeAI(apiKey);
     } else {
       this.logger.warn(
@@ -69,36 +77,31 @@ export class ScraperService {
   async scrapeUrl(url: string): Promise<ScrapedContent> {
     try {
       this.logger.log(`Fetching source URL: ${url}`);
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 25000);
-
-      const response = await fetch(url, {
+      // safeFetch: public addresses only (re-checked on every redirect), size + time capped
+      const response = await safeFetch(url, {
+        timeoutMs: 25_000,
+        maxBytes: 12 * 1024 * 1024,
         headers: {
-          'User-Agent':
-            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+          'User-Agent': CRAWLER_USER_AGENT,
           Accept: 'text/html,application/xhtml+xml,application/xml,application/pdf;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9,hi;q=0.8',
         },
-        signal: controller.signal,
       });
 
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        throw new BadRequestException(`Failed to fetch URL. HTTP status: ${response.status} ${response.statusText}`);
+      if (response.status < 200 || response.status >= 300) {
+        throw new BadRequestException(`Failed to fetch URL. HTTP status: ${response.status}`);
       }
 
-      const contentType = response.headers.get('content-type') || '';
-      const isPdf = contentType.toLowerCase().includes('application/pdf') || url.toLowerCase().split('?')[0].endsWith('.pdf');
+      const contentType = String(response.headers['content-type'] || '');
+      const isPdf = contentType.toLowerCase().includes('application/pdf') || response.url.toLowerCase().split('?')[0].endsWith('.pdf');
 
       if (isPdf) {
-        const arrayBuf = await response.arrayBuffer();
-        const buffer = Buffer.from(arrayBuf);
+        const buffer = response.body;
         this.logger.log(`Fetched PDF document (${(buffer.length / 1024).toFixed(1)} KB)`);
         return { type: 'pdf', content: buffer };
       }
 
-      const html = await response.text();
+      const html = decodeBody(response);
       const $ = cheerio.load(html);
 
       // Strip non-content and noisy elements first
@@ -159,12 +162,13 @@ export class ScraperService {
         detectedLinks: detectedLinks.slice(0, 40),
       };
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        throw new BadRequestException('Request timed out while connecting to source URL (25s limit)');
-      }
       if (err instanceof BadRequestException) throw err;
+      if (err instanceof UnsafeUrlError) throw new BadRequestException('That URL is not allowed (private or invalid address).');
+      if (err instanceof ResponseTooLargeError) throw new BadRequestException('The page is too large to import.');
+      if (/timed out/i.test(err.message)) throw new BadRequestException('Request timed out while connecting to source URL (25s limit)');
       this.logger.error(`Error scraping URL ${url}: ${err.message}`, err.stack);
-      throw new BadRequestException(`Failed to scrape URL: ${err.message}`);
+      // generic message: raw network errors would reveal internal host/port details
+      throw new BadRequestException('Failed to fetch the page. Check the URL and try again.');
     }
   }
 
@@ -182,7 +186,7 @@ export class ScraperService {
       process.env.GEMINI_API_KEY ||
       process.env.GOOGLE_API_KEY;
 
-    if (!apiKey || apiKey === 'your-google-api-key') {
+    if (!apiKey || /^your-(google|gemini)-api-key$/.test(apiKey)) {
       throw new BadRequestException(
         'Gemini API key is not configured. Please add GEMINI_API_KEY in backend/.env.development (or server env).',
       );
@@ -230,6 +234,8 @@ OUTPUT MUST BE STRICT VALID JSON conforming to this schema:
   "metaTitle": string (STRICTLY 50-60 characters. Clean, high CTR format: "{Exam/Job Name} {Year}: Apply Online, Dates"),
   "metaDescription": string (STRICTLY 140-155 characters. Must summarize eligibility, vacancies/seats, application deadline date, and call to action),
   "tags": string[] (8-12 high-intent search tags covering exam name, organization acronym, state/central, qualification level, and keywords like "Sarkari Result", "Apply Online"),
+  "confidence": number (0-100. How sure you are that EVERY field above is stated in the source. Use below 70 if any date, vacancy count or link was guessed),
+  "uncertainFields": string[] (names of fields you had to guess or could not find in the source, e.g. ["lastDate","totalVacancy"]; empty array if none),
   "sections": [
     // Array of typed Section Builder blocks:
     // 1. callout: { "type": "callout", "tone": "info" | "warning" | "success", "text": "..." }
@@ -242,6 +248,11 @@ OUTPUT MUST BE STRICT VALID JSON conforming to this schema:
     // 8. faq: { "type": "faq", "title": "Frequently Asked Questions", "items": [{ "question": "...", "answer": "..." }] }
   ]
 }
+
+FACTUAL ACCURACY (most important rule):
+- Use ONLY facts stated in the source. NEVER invent or estimate dates, vacancy counts, fees, ages or links.
+- If a fact is not in the source, leave that field empty/omitted and add its name to "uncertainFields".
+- Copy dates and numbers exactly. Do not mention the name of the website you are reading; write about the recruiting organisation only.
 
 STRICT SEO & STRUCTURE GUIDELINES:
 1. metaTitle: Must NOT exceed 60 characters. Must NOT be truncated.
@@ -354,12 +365,12 @@ STRICT SEO & STRUCTURE GUIDELINES:
     return {
       title: String(parsed.title || scraped.title || 'Untitled Notification').slice(0, 300),
       slug,
-      type: preferredPostType || parsed.type || 'job',
+      type: String(preferredPostType || parsed.type || 'job').toLowerCase(),
       shortDescription: parsed.description ? String(parsed.description).slice(0, 1000) : undefined,
       description: parsed.description ? String(parsed.description).slice(0, 1000) : undefined,
       organization: parsed.organization ? String(parsed.organization).slice(0, 200) : undefined,
       location: parsed.location ? String(parsed.location).slice(0, 200) : 'All India',
-      states: Array.isArray(parsed.states) && parsed.states.length > 0 ? parsed.states : ['All India'],
+      states: Array.isArray(parsed.states) && parsed.states.length > 0 ? parsed.states.map((x: any) => String(x).slice(0, 60)).slice(0, 40) : ['All India'],
       salary: parsed.salary ? String(parsed.salary).slice(0, 200) : undefined,
       qualification,
       experience,
@@ -378,9 +389,11 @@ STRICT SEO & STRUCTURE GUIDELINES:
         : [],
       metaTitle,
       metaDescription,
-      tags: Array.isArray(parsed.tags) ? parsed.tags.map((t: any) => String(t).trim()).filter(Boolean) : [],
+      tags: Array.isArray(parsed.tags) ? parsed.tags.map((t: any) => String(t).trim()).filter(Boolean).slice(0, 20) : [],
       sourceUrl,
       sections: validatedSections,
+      confidence: typeof parsed.confidence === 'number' && isFinite(parsed.confidence) ? Math.max(0, Math.min(100, Math.round(parsed.confidence))) : undefined,
+      uncertainFields: Array.isArray(parsed.uncertainFields) ? parsed.uncertainFields.map((f: any) => String(f).slice(0, 40)).slice(0, 20) : [],
     };
   }
 
@@ -435,7 +448,11 @@ STRICT SEO & STRUCTURE GUIDELINES:
    * Applies consistent, attractive styling to Section Builder blocks.
    */
   private enrichBlockStyles(type: string, existingStyles?: BlockStyles, level?: number): BlockStyles | undefined {
-    const merged: BlockStyles = { ...(existingStyles || {}) };
+    // Model output is untrusted (a scraped page can steer it): drop className/customCss entirely and
+    // keep the remaining style fields only if they pass the strict allowlist schema.
+    const { className: _c, customCss: _css, ...modelStyles } = (existingStyles || {}) as Record<string, any>;
+    const checked = BlockStylesSchema.safeParse(modelStyles);
+    const merged: BlockStyles = { ...((checked.success ? checked.data : undefined) || {}) };
 
     switch (type) {
       case 'heading':
@@ -565,10 +582,8 @@ STRICT SEO & STRUCTURE GUIDELINES:
         const items = Array.isArray(sec.items)
           ? sec.items
               .filter((i: any) => i && i.label && i.url)
-              .map((i: any) => ({
-                label: String(i.label).slice(0, 300),
-                url: this.normalizeUrl(i.url) || 'https://google.com',
-              }))
+              .map((i: any) => ({ label: String(i.label).slice(0, 300), url: this.normalizeUrl(i.url) }))
+              .filter((i: any) => !!i.url) // drop unusable links rather than inventing one
           : [];
         if (items.length > 0) {
           const styles = this.enrichBlockStyles('links', sec.styles);

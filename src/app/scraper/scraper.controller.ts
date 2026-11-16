@@ -1,8 +1,9 @@
-import { Controller, Post, Get, Body, UseGuards, Req, HttpCode, HttpStatus, Query } from '@nestjs/common';
+import { Controller, Post, Get, Body, UseGuards, Req, HttpCode, HttpStatus, ConflictException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { ScraperService } from './scraper.service';
 import { CrawlerService } from './crawler.service';
 import { ScrapeJobDto } from './dto/generate-post.dto';
+import { CrawlDto } from './dto/crawl.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PoliciesGuard } from '../auth/guards/policies.guard';
 import { CheckPolicies } from '../auth/decorators/policies.decorator';
@@ -57,28 +58,18 @@ export class ScraperController {
   }
 
   /**
-   * Trigger discovery & crawler run on-demand for an adapter or all adapters.
-   * Creates detected items as "In Review" posts.
+   * Starts a discovery + extraction run in the background and returns immediately (202).
+   * Poll GET /scraper/stats for `running` and `lastRun`. Posts that pass the quality gate are
+   * published automatically when CRAWLER_AUTO_PUBLISH=true, otherwise they wait in review.
    */
   @Post('crawl')
-  @HttpCode(HttpStatus.OK)
+  @HttpCode(HttpStatus.ACCEPTED)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @CheckPolicies({ action: Action.CREATE, resource: Resource.JOB })
-  async triggerCrawl(
-    @Body('adapter') adapter?: string,
-    @Body('limit') limit?: number,
-    @Body('maxAiExtract') maxAiExtract?: number,
-  ) {
-    const lim = limit && limit > 0 && limit <= 50 ? limit : 15;
-    const maxAi = maxAiExtract && maxAiExtract > 0 && maxAiExtract <= 10 ? maxAiExtract : 3;
-
-    if (adapter) {
-      const result = await this.crawlerService.runCrawlForAdapter(adapter, lim, maxAi);
-      return { success: true, result };
-    }
-
-    const results = await this.crawlerService.runCrawlForAll(lim, maxAi);
-    return { success: true, results };
+  triggerCrawl(@Body() dto: CrawlDto) {
+    const started = this.crawlerService.startCrawl(dto.adapter, dto.limit ?? 15, dto.maxAiExtract ?? 3);
+    if (!started.started) throw new ConflictException(`Crawl not started: ${started.reason}`);
+    return { success: true, started: true };
   }
 
   /**

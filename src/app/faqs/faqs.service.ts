@@ -3,6 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Faq, FaqDocument } from './schemas/faq.schema';
 import { CreateFaqDto } from './dto/create-faq.dto';
+import { sanitizeContentHtml } from '../../common/utils/sanitize';
 
 @Injectable()
 export class FaqsService {
@@ -14,7 +15,7 @@ export class FaqsService {
       const last = await this.faqModel.findOne().sort({ order: -1 }).exec();
       dto.order = last ? last.order + 1 : 0;
     }
-    return new this.faqModel(dto).save();
+    return new this.faqModel({ ...dto, answer: sanitizeContentHtml(dto.answer) }).save();
   }
 
   /** Get all FAQs sorted by order (admin — includes inactive) */
@@ -24,7 +25,9 @@ export class FaqsService {
 
   /** Get only active FAQs sorted by order (public) */
   async findPublic(): Promise<Faq[]> {
-    return this.faqModel.find({ isActive: true }).sort({ order: 1 }).exec();
+    const faqs = await this.faqModel.find({ isActive: true }).sort({ order: 1 }).lean().exec();
+    // sanitise on read too: rows saved before write-time sanitising existed must not reach visitors raw
+    return faqs.map((f) => ({ ...f, answer: sanitizeContentHtml(f.answer) })) as unknown as Faq[];
   }
 
   async findOne(id: string): Promise<Faq> {
@@ -34,7 +37,8 @@ export class FaqsService {
   }
 
   async update(id: string, dto: Partial<CreateFaqDto>): Promise<Faq> {
-    const faq = await this.faqModel.findByIdAndUpdate(id, dto, { new: true }).exec();
+    const data = dto.answer !== undefined ? { ...dto, answer: sanitizeContentHtml(dto.answer) } : dto;
+    const faq = await this.faqModel.findByIdAndUpdate(id, data, { new: true }).exec();
     if (!faq) throw new NotFoundException(`FAQ ${id} not found`);
     return faq;
   }

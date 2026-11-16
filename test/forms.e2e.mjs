@@ -235,6 +235,62 @@ ok('duplicate does not copy canonicalUrl / stats / publishedAt', !dup.data.canon
 await eq('duplicate unknown id → 404', api('POST', '/jobs/id/64b64b64b64b64b64b64b64b/duplicate'), 404);
 await eq('duplicate requires auth → 401', api('POST', `/jobs/id/${rich.data._id}/duplicate`, undefined, ''), 401);
 
+// ───────────── Security: scraper SSRF, FAQ XSS, block styles
+console.log('\n# security');
+const loginAs = async (email) => (await api('POST', '/auth/login', { email, password: process.env.ADMIN_PASSWORD || 'Admin@123' }, '')).data?.access_token;
+const editorTok = await loginAs('editor@rojgarresult.com');
+const viewerTok = await loginAs('viewer@rojgarresult.com');
+ok('editor and viewer can log in for the security checks', !!editorTok && !!viewerTok);
+
+for (const target of ['http://127.0.0.1:5000/api/health', 'http://169.254.169.254/latest/meta-data/', 'http://10.0.0.1/', 'http://[::1]:5000/', 'http://2130706433/', 'http://192.168.1.1/']) {
+  const r = await api('POST', '/scraper/extract', { url: target }, editorTok);
+  const m = JSON.stringify(r.raw);
+  ok(`scraper refuses ${target} → 400`, r.status === 400 && !/ECONN|EAI_AGAIN|127\.0\.0\.1:|connect /.test(m.replace(target, '')), `${r.status} ${m.slice(0, 160)}`);
+}
+await eq('scraper needs auth → 401', api('POST', '/scraper/extract', { url: 'https://example.com' }, ''), 401);
+await eq('viewer cannot use the scraper → 403', api('POST', '/scraper/extract', { url: 'https://example.com' }, viewerTok), 403);
+// /scraper/crawl allows 5 calls/min per IP, so keep this block to 5 calls
+await eq('crawl: limit as text → 400', api('POST', '/scraper/crawl', { limit: 'lots' }), 400);
+await eq('crawl: maxAiExtract above the cap → 400', api('POST', '/scraper/crawl', { maxAiExtract: 99 }), 400);
+await eq('crawl: unknown field → 400', api('POST', '/scraper/crawl', { hack: 1 }), 400);
+await eq('crawl: unknown adapter → 409, nothing started', api('POST', '/scraper/crawl', { adapter: 'does-not-exist' }), 409);
+await eq('viewer cannot start a crawl → 403', api('POST', '/scraper/crawl', {}, viewerTok), 403);
+const st = await eq('crawler stats → 200', api('GET', '/scraper/stats'), 200);
+ok('stats expose running flag, config and the needs-attention list', typeof st.data.running === 'boolean' && st.data.config && Array.isArray(st.data.needsAttention) && Array.isArray(st.data.registeredAdapters), msg(st).slice(0, 200));
+
+// FAQ answers are HTML shown raw on the public site: must be sanitised on write and on read
+const evil = '<p>ok</p><img src=x onerror=alert(1)><script>alert(2)</script><a href="javascript:alert(3)">x</a><iframe src="https://evil.example"></iframe>';
+const xf = await eq('editor creates FAQ with hostile HTML → 201', api('POST', '/faqs', { question: `zz-forms xss ${tag}?`, answer: evil, order: 9998 }, editorTok), 201);
+cleanup.push(() => api('DELETE', `/faqs/${xf.data._id}`));
+ok('stored FAQ answer has no script/onerror/javascript:/iframe', !/script|onerror|javascript:|iframe/i.test(xf.data.answer), xf.data.answer);
+ok('safe markup survives', /<p>ok<\/p>/.test(xf.data.answer));
+await api('PATCH', `/faqs/${xf.data._id}`, { answer: evil + '<svg onload=alert(4)>' }, editorTok);
+const xf2 = await api('GET', `/faqs/${xf.data._id}`);
+ok('updated FAQ answer is sanitised too', !/script|onerror|onload|svg/i.test(xf2.data?.answer ?? ''), xf2.data?.answer);
+const pub2 = await api('GET', '/faqs/public', undefined, '');
+const row = (pub2.data || []).find((f) => f._id === xf.data._id);
+ok('public FAQ feed is sanitised', !!row && !/script|onerror|onload|javascript:/i.test(row.answer));
+
+// block styles: only cosmetic values
+const styled = (styles) => mkBlockPost([{ type: 'paragraph', text: 'styled', styles }]);
+const sOk = await styled({ textColor: '#1e3a8a', bgColor: 'rgb(240,253,244)', padding: '8px 12px', borderRadius: '8px', className: 'rounded-lg shadow-md', customCss: 'border-left: 4px solid #2563eb; font-style: italic' });
+ok('accepts cosmetic styles', sOk.status === 201, msg(sOk).slice(0, 200));
+if (sOk.data?._id) cleanup.push(() => api('DELETE', `/jobs/id/${sOk.data._id}`));
+for (const [name, styles] of [
+  ['position:fixed overlay in customCss', { customCss: 'position: fixed; inset: 0; z-index: 99999' }],
+  ['url() tracking pixel', { customCss: 'color: red; background-image: url(https://evil.example/t.gif)' }],
+  ['display:none cloaking', { customCss: 'display: none' }],
+  ['fixed/inset/z-50 classes', { className: 'fixed inset-0 z-50' }],
+  ['hidden class', { className: 'hidden' }],
+  ['arbitrary-value class', { className: 'w-[9999px]' }],
+  ['colour carrying a second declaration', { textColor: 'red; position: fixed' }],
+  ['colour with url()', { bgColor: 'url(https://evil.example/x)' }],
+]) {
+  const r = await styled(styles);
+  ok(`rejects ${name} → 400`, r.status === 400, `${r.status} ${msg(r).slice(0, 140)}`);
+  if (r.data?._id) cleanup.push(() => api('DELETE', `/jobs/id/${r.data._id}`));
+}
+
 // ───────────── cleanup
 for (const fn of cleanup.reverse()) { try { await fn(); } catch {} }
 console.log(`\n${pass} passed, ${fail} failed`);
