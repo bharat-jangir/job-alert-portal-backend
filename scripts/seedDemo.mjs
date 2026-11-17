@@ -329,6 +329,41 @@ async function seed() {
       applyLink: undefined, importantDates: undefined, qualification: undefined,
     });
   }
+  // Hindi versions (demo): the flagship post gets a real Hindi body, and the newest post of each type gets a
+  // short one, so the /hi/ site has content in every list. Idempotent: posts that already have Hindi are skipped.
+  const HI_TYPE = { job: 'नौकरी', result: 'रिजल्ट', 'answer-key': 'आंसर की', admission: 'प्रवेश', 'admit-card': 'एडमिट कार्ड', 'online-form': 'ऑनलाइन फॉर्म', syllabus: 'सिलेबस', update: 'अपडेट' };
+  const list = (await api('GET', '/jobs/admin/list?limit=200&search=' + encodeURIComponent('')))?.data?.jobs ?? [];
+  const seenType = new Set();
+  for (const j of list) {
+    if (j.status !== 'published' || j.translations?.hi?.title) continue;
+    const isComplex = j.title === COMPLEX_TITLE;
+    if (!isComplex && (seenType.has(j.type) || !HI_TYPE[j.type] || !/^DEMO|^[A-Z]{2,}/.test(j.title))) continue;
+    seenType.add(j.type);
+    const hi = isComplex
+      ? {
+          title: 'डेमो आरआरबी ग्रुप डी 2026 मेगा भर्ती – 32,438 पद (जोन, पद और श्रेणी के अनुसार)',
+          description: 'आरआरबी ग्रुप डी 2026: 16 जोन में 32,438 पद। पदवार और श्रेणीवार रिक्तियां, पात्रता, शुल्क, परीक्षा पैटर्न और आवेदन कैसे करें।',
+          organization: 'रेलवे भर्ती बोर्ड', location: 'पूरे भारत में (जोन के अनुसार)', updateNote: 'जोनवार रिक्ति तालिका जोड़ी गई',
+          importantDateLabels: ['अधिसूचना की तिथि', 'ऑनलाइन आवेदन शुरू', 'आवेदन की अंतिम तिथि', 'शुल्क जमा करने की अंतिम तिथि', 'सुधार की विंडो', 'CBT एडमिट कार्ड', 'CBT परीक्षा तिथि', 'रिजल्ट'],
+          sections: [
+            { type: 'callout', tone: 'info', text: '**आरआरबी ग्रुप डी 2026** के लिए ऑनलाइन आवेदन शुरू हो चुके हैं। अंतिम तिथि से पहले आवेदन करें।' },
+            { type: 'heading', level: 2, text: 'आवेदन शुल्क' },
+            { type: 'table', title: 'श्रेणी के अनुसार शुल्क', headers: ['श्रेणी', 'शुल्क (₹)', 'वापसी योग्य'], rows: [['सामान्य / OBC', '500', '400'], ['SC / ST / महिला / EWS', '250', '250']] },
+            { type: 'heading', level: 2, text: 'आवेदन कैसे करें' },
+            { type: 'steps', items: ['आधिकारिक वेबसाइट खोलें और पंजीकरण करें।', 'ऑनलाइन आवेदन फॉर्म में सही जानकारी भरें।', 'फोटो और हस्ताक्षर अपलोड करें।', 'शुल्क जमा करें और फॉर्म का प्रिंट निकालें।'] },
+            { type: 'faq', title: 'अक्सर पूछे जाने वाले प्रश्न', items: [{ question: 'आरआरबी ग्रुप डी के लिए न्यूनतम योग्यता क्या है?', answer: '10वीं पास या आईटीआई / एनसीवीटी प्रमाणपत्र।' }, { question: 'आवेदन की अंतिम तिथि क्या है?', answer: 'ऊपर दी गई महत्वपूर्ण तिथियां तालिका देखें।' }] },
+          ],
+          status: 'machine',
+        }
+      : {
+          title: `${HI_TYPE[j.type]}: ${j.title}`,
+          description: `${HI_TYPE[j.type]} की ताज़ा जानकारी। यह डेमो पोस्ट है।`,
+          status: 'machine',
+        };
+    must(await api('PATCH', `/jobs/id/${j._id}`, { translations: { hi }, revisionNote: 'demo Hindi' }), `hindi ${j.title}`);
+    created.hindi = (created.hindi ?? 0) + 1;
+  }
+
   // workflow samples
   await mk('job', 'DEMO Draft Post Not Visible To Public', 'Indian Army', { status: 'draft' });
   await mk('result', 'DEMO In Review Post Waiting For Publisher', 'State Bank of India', { status: 'review' });

@@ -11,6 +11,10 @@ export class JobCategory {
   @Prop()
   displayName?: string;
 
+  /** Hindi label shown on the /hi/ site. Falls back to displayName when empty. */
+  @Prop()
+  displayNameHi?: string;
+
   @Prop({ required: true, unique: true, index: true })
   slug: string;
 

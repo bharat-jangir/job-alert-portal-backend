@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, Query, UseGuards } from '@nestjs/common';
 import { JobCategoriesService } from './job-categories.service';
 import { CreateJobCategoryDto, UpdateJobCategoryDto } from './dto/job-category.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -19,8 +19,8 @@ export class JobCategoriesController {
 
   // Public read routes
   @Get('active')
-  findAllActive() {
-    return this.jobCategoriesService.findAllActive();
+  findAllActive(@Query('lang') lang?: string) {
+    return this.jobCategoriesService.findAllActive(lang);
   }
 
   @Get()

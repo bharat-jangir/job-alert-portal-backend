@@ -1,5 +1,5 @@
 import {
-  IsArray, IsBoolean, IsDateString, IsEnum, IsIn, IsMongoId, IsNotEmpty, IsOptional, IsString, IsUrl,
+  IsArray, IsBoolean, IsDateString, IsEnum, IsIn, IsMongoId, IsNotEmpty, IsObject, IsOptional, IsString, IsUrl,
   Matches, MaxLength, Validate, ValidateNested, ValidationArguments, ValidatorConstraint,
   ValidatorConstraintInterface,
 } from 'class-validator';
@@ -7,6 +7,7 @@ import { Type } from 'class-transformer';
 import { EmptyToUndefined } from '../../../common/decorators/empty-to-undefined';
 import { ExperienceLevel, POST_STATUSES, QualificationLevel } from '../schemas/job.schema';
 import { SectionsSchema, firstIssue } from '../schemas/post-sections.schema';
+import { TranslationsSchema } from '../i18n/languages';
 
 @ValidatorConstraint({ name: 'sections', async: false })
 class SectionsConstraint implements ValidatorConstraintInterface {
@@ -16,6 +17,19 @@ class SectionsConstraint implements ValidatorConstraintInterface {
   defaultMessage(args: ValidationArguments) {
     const r = SectionsSchema.safeParse(args.value);
     return r.success ? 'Invalid sections' : firstIssue(r.error);
+  }
+}
+
+@ValidatorConstraint({ name: 'translations', async: false })
+class TranslationsConstraint implements ValidatorConstraintInterface {
+  validate(value: unknown) {
+    return TranslationsSchema.safeParse(value).success;
+  }
+  defaultMessage(args: ValidationArguments) {
+    const r = TranslationsSchema.safeParse(args.value);
+    if (r.success) return 'Invalid translations';
+    const i = r.error.issues[0];
+    return `translations.${i.path.join('.')}: ${i.message}`;
   }
 }
 
@@ -75,6 +89,12 @@ export class CreateJobDto {
   @IsArray()
   @Validate(SectionsConstraint)
   sections?: Record<string, any>[];
+
+  /** Other-language text, e.g. { hi: { title, sections, ... } }. See jobs/i18n/languages.ts. */
+  @IsOptional()
+  @IsObject()
+  @Validate(TranslationsConstraint)
+  translations?: Record<string, any>;
 
   @IsString()
   @IsOptional()

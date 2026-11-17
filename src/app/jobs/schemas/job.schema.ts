@@ -111,6 +111,13 @@ export class Job extends BasePost {
   @Prop({ type: [Object], default: [] })
   sections: Record<string, any>[];
 
+  /**
+   * Other-language versions of the text, keyed by language code (see jobs/i18n/languages.ts).
+   * Shared facts (slug, dates, links, type) live on the post itself and are not duplicated here.
+   */
+  @Prop({ type: Object, default: undefined })
+  translations?: Record<string, any>;
+
   // ── SEO / routing ──────────────────────────────────────────
   /** Old slugs. Public lookups on these resolve to the current post so the site can 301. */
   @Prop({ type: [String], default: [], index: true })
@@ -154,4 +161,6 @@ JobSchema.index({ status: 1, qualification: 1, publishedAt: -1 });
 JobSchema.index({ status: 1, isBulletin: 1, publishedAt: -1 });
 JobSchema.index({ status: 1, scheduledAt: 1 });
 JobSchema.index({ status: 1, lastDate: 1 });
-JobSchema.index({ status: 1, views: -1 }); 
+JobSchema.index({ status: 1, views: -1 });
+// Hindi title search (the public search also matches translated titles).
+JobSchema.index({ 'translations.hi.title': 1 }, { sparse: true }); 

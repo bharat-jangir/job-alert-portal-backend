@@ -270,6 +270,24 @@ export class CrawlerService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /**
+   * Adds the Hindi version of a post. Best effort: a failure (no API key, quota, bad output) never fails
+   * the crawl, and a translation that does not pass the quality checks is simply not saved, so the post
+   * stays English-only until a person translates it.
+   */
+  private async autoTranslate(jobId: string, title: string) {
+    if (this.configService.get<string>('CRAWLER_AUTO_TRANSLATE') === 'false') return;
+    if (!this.jobsService.canTranslate) return;
+    try {
+      const r = await this.jobsService.translate(jobId, { lang: 'hi', onlyIfAcceptable: true }, this.bot(false));
+      this.logger.log(r.saved
+        ? `Hindi added to "${title}" (${r.stats.strings} strings, ${r.stats.reverted} kept in English)`
+        : `Hindi for "${title}" not saved: failed quality checks (${JSON.stringify(r.stats)})`);
+    } catch (e: any) {
+      this.logger.warn(`Hindi translation skipped for "${title}": ${e?.message}`);
+    }
+  }
+
   private bot(canPublish: boolean): Actor {
     return { id: CRAWLER_BOT_ID, email: 'crawler-bot@internal', role: 'editor' as Actor['role'], canPublish };
   }
@@ -295,6 +313,7 @@ export class CrawlerService implements OnModuleInit, OnModuleDestroy {
         $unset: { errorMessage: '', nextAttemptAt: '', needsAttention: '' },
       },
     );
+    await this.autoTranslate(String(job._id), job.title);
     res.processed++;
     if (publish) res.autoPublished++; else res.heldForReview++;
     this.logger.log(`[${src.adapterKey}] ${publish ? 'PUBLISHED' : 'held for review'}: "${job.title}"${gate.passed ? '' : ` — ${gate.reasons.join('; ')}`}`);
@@ -342,6 +361,8 @@ export class CrawlerService implements OnModuleInit, OnModuleDestroy {
         $unset: { errorMessage: '', needsAttention: '' },
       },
     );
+    // the English text changed: refresh a machine Hindi version (a reviewed one is left for a person)
+    await this.autoTranslate(String(job._id), job.title);
     res.updated++;
     this.logger.log(`[${src.adapterKey}] updated existing post from changed source: ${src.url}`);
   }

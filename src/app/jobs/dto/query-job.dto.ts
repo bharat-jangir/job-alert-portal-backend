@@ -77,4 +77,11 @@ export class QueryJobDto {
   @IsString()
   @MaxLength(200)
   search?: string;
+
+  /** Language of the returned text. Unknown values behave like `en`. */
+  @IsOptional()
+  @EmptyToUndefined()
+  @IsString()
+  @MaxLength(10)
+  lang?: string;
 }

@@ -22,6 +22,11 @@ import { CacheService } from '../../common/services/cache.service';
 import { RevalidateService } from '../../common/services/revalidate.service';
 import { escapeRegex, slugify } from '../../common/utils/text';
 import { sanitizeContentHtml } from '../../common/utils/sanitize';
+import { TranslationService } from '../translation/translation.service';
+import {
+  Lang, TranslatedLang, cardTranslationSelect, listTranslationExclusion, localizeCards, localizePost,
+  normalizeLang, availableLanguages, PostTranslationSchema,
+} from './i18n/languages';
 
 /** Who is making the change. `canPublish` comes from the PUBLISH:Job policy. */
 export interface Actor {
@@ -39,7 +44,7 @@ const RESTORABLE_FIELDS = [
   'title', 'type', 'categoryId', 'organization', 'organizationId', 'location', 'states', 'salary',
   'qualification', 'experience', 'lastDate', 'applyLink', 'description', 'eligibility', 'totalVacancy',
   'ageLimit', 'importantDates', 'sections', 'htmlContent', 'metaTitle', 'metaDescription', 'canonicalUrl',
-  'ogImage', 'tags', 'sourceUrl', 'updateNote', 'attachments', 'isBulletin',
+  'ogImage', 'tags', 'sourceUrl', 'updateNote', 'attachments', 'isBulletin', 'translations',
 ];
 const MAX_REVISIONS = 30;
 const MAX_PUBLIC_PAGE = 200;
@@ -59,6 +64,7 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
     @InjectModel(Organization.name) private orgModel: Model<OrganizationDocument>,
     private cache: CacheService,
     private revalidate: RevalidateService,
+    private translator: TranslationService,
   ) {}
 
   /**
@@ -236,7 +242,7 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
         .sort({ updatedAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
-        .select('title slug type status organization location lastDate publishedAt scheduledAt isBulletin isActive views updatedAt')
+        .select('title slug type status organization location lastDate publishedAt scheduledAt isBulletin isActive views updatedAt translations.hi.title translations.hi.status')
         .lean()
         .exec(),
       this.jobModel.countDocuments(filter),
@@ -263,6 +269,7 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
   async findAll(query: QueryJobDto): Promise<{ jobs: Job[]; total: number; page: number; limit: number; totalPages: number }> {
     const page = Math.min(query.page ?? 1, MAX_PUBLIC_PAGE);
     const limit = query.limit ?? 10;
+    const lang = normalizeLang(query.lang);
     const filter = this.buildFilter(query, { ...LIVE });
     if (query.isActive === false) filter.isActive = false; // legacy filter, still honoured
 
@@ -272,113 +279,152 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
         .sort({ publishedAt: -1, _id: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
-        .select('-htmlContent -sections -tags -eligibility -previousSlugs -authorId -lastEditorId')
+        .select(`-htmlContent -sections -tags -eligibility -previousSlugs -authorId -lastEditorId ${listTranslationExclusion(lang)}`)
         .populate('organizationId', 'name slug')
         .lean()
         .exec(),
       this.jobModel.countDocuments(filter),
     ]);
-    return { jobs: jobs as any, total, page, limit, totalPages: Math.ceil(total / limit) };
+    return { jobs: localizeCards(jobs as any[], lang) as any, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   /**
    * Public detail. If `slug` is an old slug the *current* post is returned (its `slug` differs
    * from the request) so the site can answer with a permanent redirect.
    */
-  async findBySlug(slug: string): Promise<Job> {
+  async findBySlug(slug: string, langInput?: string): Promise<any> {
     if (!slug) throw new NotFoundException('Slug is required');
+    const lang = normalizeLang(langInput);
     const select = '-previousSlugs -authorId -lastEditorId';
-    let job = await this.jobModel.findOne({ slug, ...LIVE }).select(select).populate('organizationId').exec();
+    let job: any = await this.jobModel.findOne({ slug, ...LIVE }).select(select).populate('organizationId').lean().exec();
     if (!job) {
-      job = await this.jobModel.findOne({ previousSlugs: slug, ...LIVE }).select(select).populate('organizationId').exec();
+      job = await this.jobModel.findOne({ previousSlugs: slug, ...LIVE }).select(select).populate('organizationId').lean().exec();
     }
     if (!job) throw new NotFoundException(`Job with slug ${slug} not found`);
-    return job;
+    // English with the requested translation laid over it, plus which languages exist (for hreflang)
+    return localizePost(job, lang);
   }
 
   /** Same-type posts, preferring the same organization. */
-  async findRelated(slug: string, limit = 6) {
+  async findRelated(slug: string, langInput?: string, limit = 6) {
+    const lang = normalizeLang(langInput);
+    const fields = `${CARD_FIELDS} ${cardTranslationSelect(lang)}`;
     const post = await this.jobModel.findOne({ slug, ...LIVE }).select('type organization').lean();
     if (!post) return [];
     const base = { ...LIVE, type: post.type, slug: { $ne: slug } };
     const same = post.organization
-      ? await this.jobModel.find({ ...base, organization: post.organization }).sort({ publishedAt: -1 }).limit(limit).select(CARD_FIELDS).lean()
+      ? await this.jobModel.find({ ...base, organization: post.organization }).sort({ publishedAt: -1 }).limit(limit).select(fields).lean()
       : [];
-    if (same.length >= limit) return same;
+    if (same.length >= limit) return localizeCards(same, lang);
     const rest = await this.jobModel
       .find({ ...base, _id: { $nin: same.map((p) => p._id) } })
       .sort({ publishedAt: -1 })
       .limit(limit - same.length)
-      .select(CARD_FIELDS)
+      .select(fields)
       .lean();
-    return [...same, ...rest];
+    return localizeCards([...same, ...rest], lang);
   }
 
-  findBulletins(): Promise<Job[]> {
-    return this.jobModel
+  async findBulletins(langInput?: string): Promise<any[]> {
+    const lang = normalizeLang(langInput);
+    const rows = await this.jobModel
       .find({ ...LIVE, isBulletin: true })
+      .select(listTranslationExclusion(lang))
       .populate('organizationId')
       .sort({ publishedAt: -1, updatedAt: -1 })
       .limit(50)
+      .lean()
       .exec();
+    return localizeCards(rows, lang);
   }
 
-  findUpcomingDeadlines(): Promise<Job[]> {
-    return this.cache.wrap('jobs:deadlines', 60_000, () =>
-      this.jobModel
-        .find({ ...LIVE, lastDate: { $gt: new Date() } })
-        .sort({ lastDate: 1 })
-        .limit(10)
-        .select(CARD_FIELDS)
-        .lean()
-        .exec() as Promise<Job[]>,
+  findUpcomingDeadlines(langInput?: string): Promise<any[]> {
+    const lang = normalizeLang(langInput);
+    return this.cache.wrap(`jobs:deadlines:${lang}`, 60_000, async () =>
+      localizeCards(
+        await this.jobModel
+          .find({ ...LIVE, lastDate: { $gt: new Date() } })
+          .sort({ lastDate: 1 })
+          .limit(10)
+          .select(`${CARD_FIELDS} ${cardTranslationSelect(lang)}`)
+          .lean()
+          .exec(),
+        lang,
+      ),
     );
   }
 
-  findPopularJobs(): Promise<Job[]> {
-    return this.jobModel
+  async findPopularJobs(langInput?: string): Promise<any[]> {
+    const lang = normalizeLang(langInput);
+    const rows = await this.jobModel
       .find(LIVE)
+      .select(listTranslationExclusion(lang))
       .sort({ views: -1, applications: -1 })
       .populate('organizationId', 'name slug')
       .limit(10)
-      .exec();
-  }
-
-  findJobsByOrganization(organization: string): Promise<Job[]> {
-    return this.jobModel.find({ ...LIVE, organization }).sort({ publishedAt: -1 }).limit(200).exec();
-  }
-
-  searchJobs(query: string) {
-    const term = (query ?? '').trim();
-    if (term.length < 2) return Promise.resolve([]);
-    const rx = new RegExp(escapeRegex(term.slice(0, 80)), 'i');
-    return this.jobModel
-      .find({ ...LIVE, $or: [{ title: rx }, { description: rx }, { organization: rx }, { location: rx }, { tags: rx }] })
-      .sort({ publishedAt: -1 })
-      .limit(30)
-      .select('_id title slug type organization')
       .lean()
       .exec();
+    return localizeCards(rows, lang);
   }
 
-  findLatestJobs(limit = 15): Promise<Job[]> {
-    return this.jobModel
+  async findJobsByOrganization(organization: string, langInput?: string): Promise<any[]> {
+    const lang = normalizeLang(langInput);
+    const rows = await this.jobModel
+      .find({ ...LIVE, organization })
+      .select(listTranslationExclusion(lang))
+      .sort({ publishedAt: -1 })
+      .limit(200)
+      .lean()
+      .exec();
+    return localizeCards(rows, lang);
+  }
+
+  async searchJobs(query: string, langInput?: string) {
+    const lang = normalizeLang(langInput);
+    const term = (query ?? '').trim();
+    if (term.length < 2) return [];
+    const rx = new RegExp(escapeRegex(term.slice(0, 80)), 'i');
+    const rows = await this.jobModel
+      .find({
+        ...LIVE,
+        $or: [
+          { title: rx }, { description: rx }, { organization: rx }, { location: rx }, { tags: rx },
+          // Hindi titles are searchable from either language
+          { 'translations.hi.title': rx }, { 'translations.hi.description': rx },
+        ],
+      })
+      .sort({ publishedAt: -1 })
+      .limit(30)
+      .select(`_id title slug type organization ${cardTranslationSelect(lang)}`)
+      .lean()
+      .exec();
+    return localizeCards(rows, lang);
+  }
+
+  async findLatestJobs(limit = 15, langInput?: string): Promise<any[]> {
+    const lang = normalizeLang(langInput);
+    const rows = await this.jobModel
       .find(LIVE)
       .sort({ publishedAt: -1 })
-      .select('_id title slug type organization organizationId lastDate publishedAt')
+      .select(`_id title slug type organization organizationId lastDate publishedAt ${cardTranslationSelect(lang)}`)
       .populate('organizationId', 'name slug')
       .limit(Math.min(Math.max(limit || 15, 1), 200))
+      .lean()
       .exec();
+    return localizeCards(rows, lang);
   }
 
-  findByType(type: string): Promise<any[]> {
-    return this.jobModel
+  async findByType(type: string, langInput?: string): Promise<any[]> {
+    const lang = normalizeLang(langInput);
+    const rows = await this.jobModel
       .find({ ...LIVE, type })
-      .select('title slug location lastDate organization publishedAt')
+      .select(`title slug location lastDate organization publishedAt ${cardTranslationSelect(lang)}`)
       .populate('organizationId', 'name slug')
       .sort({ publishedAt: -1, createdAt: -1 })
       .limit(500)
+      .lean()
       .exec();
+    return localizeCards(rows, lang);
   }
 
   getDistinctOrganizations(): Promise<string[]> {
@@ -386,22 +432,27 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
   }
 
   /** Everything the homepage needs in one cached call. */
-  home() {
-    return this.cache.wrap('jobs:home', 30_000, async () => {
+  home(langInput?: string) {
+    const lang = normalizeLang(langInput);
+    const tr = cardTranslationSelect(lang);
+    return this.cache.wrap(`jobs:home:${lang}`, 30_000, async () => {
       const categories = await this.categoryModel.find({ isDeleted: false, showOnHome: true }).sort({ sequenceNo: 1 }).lean();
       const [bulletins, popular, ...lists] = await Promise.all([
-        this.jobModel.find({ ...LIVE, isBulletin: true }).sort({ publishedAt: -1 }).limit(30).select('title slug type publishedAt lastDate').lean(),
-        this.jobModel.find(LIVE).sort({ views: -1 }).limit(10).select(CARD_FIELDS).lean(),
+        this.jobModel.find({ ...LIVE, isBulletin: true }).sort({ publishedAt: -1 }).limit(30).select(`title slug type publishedAt lastDate ${tr}`).lean(),
+        this.jobModel.find(LIVE).sort({ views: -1 }).limit(10).select(`${CARD_FIELDS} ${tr}`).lean(),
         ...categories.map((c) =>
-          this.jobModel.find({ ...LIVE, type: c.slug }).sort({ publishedAt: -1 }).limit(15).select(CARD_FIELDS).lean(),
+          this.jobModel.find({ ...LIVE, type: c.slug }).sort({ publishedAt: -1 }).limit(15).select(`${CARD_FIELDS} ${tr}`).lean(),
         ),
       ]);
       return {
-        bulletins,
-        popular,
+        bulletins: localizeCards(bulletins, lang),
+        popular: localizeCards(popular, lang),
         sections: categories.map((c, i) => ({
-          category: { _id: c._id, name: c.name, displayName: c.displayName || c.name, slug: c.slug },
-          items: lists[i],
+          category: {
+            _id: c._id, name: c.name, slug: c.slug,
+            displayName: (lang === 'hi' && c.displayNameHi) || c.displayName || c.name,
+          },
+          items: localizeCards(lists[i], lang),
         })),
       };
     });
@@ -410,7 +461,12 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
   /** Minimal feed for XML sitemaps. */
   sitemap() {
     return this.cache.wrap('jobs:sitemap', 5 * 60_000, () =>
-      this.jobModel.find(LIVE).sort({ publishedAt: -1 }).limit(50_000).select('type slug updatedAt publishedAt').lean().exec(),
+      this.jobModel
+        .find(LIVE).sort({ publishedAt: -1 }).limit(50_000)
+        .select('type slug updatedAt publishedAt translations.hi.title')
+        .lean().exec()
+        // `languages` lets the sitemap emit hreflang alternates only for posts that really have a translation
+        .then((rows: any[]) => rows.map(({ translations, ...r }) => ({ ...r, languages: availableLanguages({ translations }) }))),
     );
   }
 
@@ -550,7 +606,7 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
     if (query.tag) filter.tags = query.tag;
     if (query.search) {
       const rx = new RegExp(escapeRegex(query.search), 'i');
-      filter.$or = [{ title: rx }, { description: rx }, { organization: rx }, { tags: rx }];
+      filter.$or = [{ title: rx }, { description: rx }, { organization: rx }, { tags: rx }, { 'translations.hi.title': rx }];
     }
     return filter;
   }
@@ -593,6 +649,7 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
       if (!parsed.success) throw new BadRequestException(firstIssue(parsed.error));
       data.sections = parsed.data.map((s) => (s.type === 'html' ? { ...s, html: sanitizeContentHtml(s.html) } : s));
     }
+    if (dto.translations !== undefined) data.translations = this.normaliseTranslations(dto.translations);
     if (dto.htmlContent !== undefined) data.htmlContent = sanitizeContentHtml(dto.htmlContent);
     if (dto.eligibility !== undefined) data.eligibility = sanitizeContentHtml(dto.eligibility);
 
@@ -608,6 +665,57 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
 
     for (const k of Object.keys(data)) if (data[k] === undefined) delete data[k];
     return data;
+  }
+
+  /** Validates, sanitises and stamps each language's text. Empty strings are dropped so they fall back to English. */
+  private normaliseTranslations(input: Record<string, any>): Record<string, any> {
+    const out: Record<string, any> = {};
+    for (const [lang, raw] of Object.entries(input ?? {})) {
+      if (!raw) continue;
+      const parsed = PostTranslationSchema.safeParse(raw);
+      if (!parsed.success) {
+        const i = parsed.error.issues[0];
+        throw new BadRequestException(`translations.${lang}.${i.path.join('.')}: ${i.message}`);
+      }
+      const t: Record<string, any> = { ...parsed.data, translatedAt: new Date() };
+      for (const k of Object.keys(t)) if (t[k] === '' || t[k] === undefined) delete t[k];
+      if (t.eligibility) t.eligibility = sanitizeContentHtml(t.eligibility);
+      if (t.sections) t.sections = t.sections.map((s: any) => (s.type === 'html' ? { ...s, html: sanitizeContentHtml(s.html) } : s));
+      out[lang] = t;
+    }
+    return out;
+  }
+
+  /**
+   * Machine-translates a post's text and stores it under `translations[lang]`.
+   * A translation a person marked `reviewed` is never replaced unless `force` is set.
+   * With `onlyIfAcceptable` (the crawler) a translation that fails the quality checks is not saved.
+   */
+  async translate(
+    id: string,
+    opts: { lang?: TranslatedLang; force?: boolean; onlyIfAcceptable?: boolean } = {},
+    actor?: Actor,
+  ) {
+    const lang = opts.lang ?? 'hi';
+    const post: any = await this.jobModel.findById(id).lean().exec();
+    if (!post) throw new NotFoundException(`Job with ID ${id} not found`);
+    if (post.translations?.[lang]?.status === 'reviewed' && !opts.force) {
+      throw new BadRequestException('This translation was reviewed by a person. Use "Re-translate anyway" to replace it.');
+    }
+    const result = await this.translator.translatePost(post, lang);
+    if (opts.onlyIfAcceptable && !result.acceptable) return { saved: false, ...result };
+
+    const existing = await this.jobModel.findById(id).exec();
+    if (existing) await this.snapshot(existing, actor, `Before ${lang} translation`);
+    const updated = await this.jobModel
+      .findByIdAndUpdate(id, { $set: { [`translations.${lang}`]: result.translation } }, { new: true })
+      .exec();
+    if (updated) this.afterWrite(updated);
+    return { saved: true, ...result };
+  }
+
+  get canTranslate(): boolean {
+    return this.translator.available;
   }
 
   /** Bust caches and tell the public site which pages changed. */

@@ -78,6 +78,19 @@ export class JobsController {
     return this.jobService.duplicate(id, actorFrom(req));
   }
 
+  /**
+   * AI-translates the post's text (Hindi) and stores it as a `machine` translation for a person to check.
+   * Never changes dates, links, numbers or the slug. Replacing a `reviewed` translation needs `force`.
+   */
+  @Post('id/:id/translate')
+  @HttpCode(HttpStatus.OK)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @UseGuards(JwtAuthGuard, PoliciesGuard)
+  @CheckPolicies({ action: Action.UPDATE, resource: Resource.JOB })
+  translate(@Param('id') id: string, @Body() body: { force?: boolean }, @Req() req: any) {
+    return this.jobService.translate(id, { lang: 'hi', force: !!body?.force }, actorFrom(req));
+  }
+
   @Delete('id/:id')
   @UseGuards(JwtAuthGuard, PoliciesGuard)
   @CheckPolicies({ action: Action.DELETE, resource: Resource.JOB })
@@ -121,8 +134,8 @@ export class JobsController {
 
   /** Homepage aggregate: bulletins, popular and one list per category. Cached 30s. */
   @Get('home')
-  home() {
-    return this.jobService.home();
+  home(@Query('lang') lang?: string) {
+    return this.jobService.home(lang);
   }
 
   @Get('facets')
@@ -153,48 +166,48 @@ export class JobsController {
   }
 
   @Get('upcoming')
-  findUpcomingDeadlines(): Promise<Job[]> {
-    return this.jobService.findUpcomingDeadlines();
+  findUpcomingDeadlines(@Query('lang') lang?: string) {
+    return this.jobService.findUpcomingDeadlines(lang);
   }
 
   @Get('popular')
-  findPopularJobs(): Promise<Job[]> {
-    return this.jobService.findPopularJobs();
+  findPopularJobs(@Query('lang') lang?: string) {
+    return this.jobService.findPopularJobs(lang);
   }
 
   @Get('organization/:organization')
-  findJobsByOrganization(@Param('organization') organization: string): Promise<Job[]> {
-    return this.jobService.findJobsByOrganization(organization);
+  findJobsByOrganization(@Param('organization') organization: string, @Query('lang') lang?: string) {
+    return this.jobService.findJobsByOrganization(organization, lang);
   }
 
   @Get('search')
-  searchJobs(@Query('q') query: string) {
-    return this.jobService.searchJobs(query);
+  searchJobs(@Query('q') query: string, @Query('lang') lang?: string) {
+    return this.jobService.searchJobs(query, lang);
   }
 
   @Get('latest')
-  findLatestJobs(@Query('limit') limit?: string): Promise<Job[]> {
-    return this.jobService.findLatestJobs(limit ? parseInt(limit, 10) : 15);
+  findLatestJobs(@Query('limit') limit?: string, @Query('lang') lang?: string) {
+    return this.jobService.findLatestJobs(limit ? parseInt(limit, 10) : 15, lang);
   }
 
   @Get('by-type/:type')
-  findByType(@Param('type') type: string) {
-    return this.jobService.findByType(type);
+  findByType(@Param('type') type: string, @Query('lang') lang?: string) {
+    return this.jobService.findByType(type, lang);
   }
 
   @Get('bulletins')
-  findBulletins(): Promise<Job[]> {
-    return this.jobService.findBulletins();
+  findBulletins(@Query('lang') lang?: string) {
+    return this.jobService.findBulletins(lang);
   }
 
   @Get(':slug/related')
-  findRelated(@Param('slug') slug: string) {
-    return this.jobService.findRelated(slug);
+  findRelated(@Param('slug') slug: string, @Query('lang') lang?: string) {
+    return this.jobService.findRelated(slug, lang);
   }
 
   // Must stay last.
   @Get(':slug')
-  findBySlug(@Param('slug') slug: string): Promise<Job> {
-    return this.jobService.findBySlug(slug);
+  findBySlug(@Param('slug') slug: string, @Query('lang') lang?: string) {
+    return this.jobService.findBySlug(slug, lang);
   }
 }

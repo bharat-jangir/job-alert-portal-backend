@@ -10,6 +10,11 @@ export class CreateJobCategoryDto {
   displayName?: string;
 
   @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  displayNameHi?: string;
+
+  @IsString()
   @IsNotEmpty()
   @Matches(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, { message: 'slug must be lowercase letters, numbers and hyphens' })
   @MaxLength(120)
@@ -36,6 +41,11 @@ export class UpdateJobCategoryDto {
   @IsString()
   @IsOptional()
   displayName?: string;
+
+  @IsString()
+  @IsOptional()
+  @MaxLength(120)
+  displayNameHi?: string;
 
   @IsString()
   @IsOptional()

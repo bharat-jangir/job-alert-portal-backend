@@ -5,10 +5,12 @@ import { JobsController } from './jobs.controller';
 import { Job, JobSchema } from './schemas/job.schema';
 import { JobRevision, JobRevisionSchema } from './schemas/job-revision.schema';
 import { JobCategory, JobCategorySchema } from '../job-categories/schemas/job-category.schema';
+import { TranslationModule } from '../translation/translation.module';
 import { Organization, OrganizationSchema } from '../organizations/schemas/organization.schema';
 
 @Module({
   imports: [
+    TranslationModule,
     MongooseModule.forFeature([
       { name: Job.name, schema: JobSchema },
       { name: JobRevision.name, schema: JobRevisionSchema },

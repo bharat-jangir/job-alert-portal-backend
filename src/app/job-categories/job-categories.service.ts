@@ -21,6 +21,13 @@ export class JobCategoriesService implements OnModuleInit {
     this.revalidate.trigger({ tags: ['categories', 'home', 'sitemap'] });
   }
 
+  /** Hindi labels for the built-in categories (the words people actually search for). */
+  private static readonly HINDI_NAMES: Record<string, string> = {
+    job: 'नौकरी', result: 'रिजल्ट', 'answer-key': 'आंसर की', admission: 'प्रवेश', 'admit-card': 'एडमिट कार्ड',
+    'online-form': 'ऑनलाइन फॉर्म', update: 'अपडेट', syllabus: 'सिलेबस', upcoming: 'आगामी', verification: 'सत्यापन',
+    'sarkari-yojana': 'सरकारी योजना',
+  };
+
   async onModuleInit() {
     const count = await this.jobCategoryModel.countDocuments();
     if (count === 0) {
@@ -41,6 +48,13 @@ export class JobCategoriesService implements OnModuleInit {
       await this.jobCategoryModel.insertMany(initialCategories);
       console.log('Successfully seeded job categories.');
     }
+    // idempotent: fills a Hindi label only where none is set, so edits made in the admin are never overwritten
+    for (const [slug, hi] of Object.entries(JobCategoriesService.HINDI_NAMES)) {
+      await this.jobCategoryModel.updateOne(
+        { slug, $or: [{ displayNameHi: { $exists: false } }, { displayNameHi: '' }] },
+        { $set: { displayNameHi: hi } },
+      );
+    }
   }
 
   async create(createJobCategoryDto: CreateJobCategoryDto): Promise<JobCategory> {
@@ -59,8 +73,14 @@ export class JobCategoriesService implements OnModuleInit {
     return created;
   }
 
-  async findAllActive(): Promise<JobCategory[]> {
-    return this.jobCategoryModel.find({ isDeleted: false }).sort({ sequenceNo: 1 }).exec();
+  /** With `lang=hi` each category's displayName is its Hindi label (when it has one). */
+  async findAllActive(lang?: string): Promise<JobCategory[]> {
+    const rows = await this.jobCategoryModel.find({ isDeleted: false }).sort({ sequenceNo: 1 }).exec();
+    if (lang !== 'hi') return rows;
+    return rows.map((r) => {
+      const o: any = r.toObject();
+      return { ...o, displayName: o.displayNameHi || o.displayName || o.name };
+    });
   }
 
   async findAll(): Promise<JobCategory[]> {
