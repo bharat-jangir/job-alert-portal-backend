@@ -22,6 +22,7 @@ import { CacheService } from '../../common/services/cache.service';
 import { RevalidateService } from '../../common/services/revalidate.service';
 import { escapeRegex, slugify } from '../../common/utils/text';
 import { sanitizeContentHtml } from '../../common/utils/sanitize';
+import { TelegramService } from '../telegram/telegram.service';
 import { TranslationService } from '../translation/translation.service';
 import {
   Lang, TranslatedLang, cardTranslationSelect, listTranslationExclusion, localizeCards, localizePost,
@@ -65,6 +66,7 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
     private cache: CacheService,
     private revalidate: RevalidateService,
     private translator: TranslationService,
+    private telegram: TelegramService,
   ) {}
 
   /**
@@ -724,5 +726,23 @@ export class JobsService implements OnApplicationBootstrap, OnApplicationShutdow
     const tags = ['posts', 'home', 'sitemap', `type:${post.type}`, `post:${post.slug}`];
     if (oldSlug && oldSlug !== post.slug) tags.push(`post:${oldSlug}`);
     this.revalidate.trigger({ tags });
+
+    // Automatically broadcast to Telegram Channel when live and published
+    if (post.status === 'published' && post.isActive !== false) {
+      this.telegram
+        .broadcastJob({
+          title: post.title,
+          slug: post.slug,
+          type: post.type,
+          organization: post.organization,
+          qualification: post.qualification,
+          totalVacancy: post.totalVacancy,
+          lastDate: post.lastDate,
+          applyLink: post.applyLink,
+        })
+        .catch((err) => {
+          this.logger.warn(`Background Telegram broadcast failed: ${err?.message}`);
+        });
+    }
   }
 }

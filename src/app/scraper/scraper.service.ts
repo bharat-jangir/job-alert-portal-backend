@@ -130,12 +130,30 @@ export class ScraperService {
 
         try {
           const resolved = new URL(href, url).href.split('#')[0];
-          if (!seenUrls.has(resolved) && (resolved.startsWith('http://') || resolved.startsWith('https://'))) {
-            seenUrls.add(resolved);
-            detectedLinks.push({ label: text, url: resolved });
+          const resolvedHost = new URL(resolved).hostname.toLowerCase();
+          const thirdPartyAggregators = [
+            'sarkariresult.com',
+            'rojgarresult.com',
+            'freejobalert.com',
+            'sarkariexam.com',
+          ];
+
+          // Filter out third-party competitor links from detected outbound links
+          const isThirdPartyAggregator = thirdPartyAggregators.some(
+            (domain) => resolvedHost === domain || resolvedHost.endsWith('.' + domain),
+          );
+
+          if (!isThirdPartyAggregator) {
+            if (!seenUrls.has(resolved) && (resolved.startsWith('http://') || resolved.startsWith('https://'))) {
+              seenUrls.add(resolved);
+              detectedLinks.push({ label: text, url: resolved });
+            }
+            // Replace link tag with readable text + markdown link
+            $a.replaceWith(` [${text}](${resolved}) `);
+          } else {
+            // Strip out competitor link, keeping plain text
+            $a.replaceWith(` ${text} `);
           }
-          // Replace link tag with readable text + markdown link
-          $a.replaceWith(` [${text}](${resolved}) `);
         } catch {}
       });
 
@@ -208,8 +226,14 @@ export class ScraperService {
           scraped.detectedLinks.map((l) => `- "${l.label}": ${l.url}`).join('\n')
         : '';
 
-    const systemPrompt = `You are an elite Government Job Portal SEO & Content Specialist (Sarkari Result, SSC, UPSC, Railway, State PSC, NTA, Bank & Defense recruitment).
+    const systemPrompt = `You are an elite Government Job Portal SEO & Content Specialist (SSC, UPSC, Railway, State PSC, NTA, Bank & Defense recruitment).
 Your job is to analyze the notification/webpage and generate maximum-accuracy structured content with high-CTR SEO metadata and modern section builder blocks.
+
+CRITICAL COPYRIGHT & ZERO THIRD-PARTY BRANDING POLICY:
+- NEVER mention third-party websites or brand names (e.g. "Sarkari Result", "Rojgar Result", "FreeJobAlert") in title, description, tags, headings, or content.
+- Write purely about the official recruiting organisation / examination board.
+- ALL links must strictly point to OFFICIAL government websites (.gov.in, .nic.in, .ac.in, .org, or official board domains) or direct official notification PDFs.
+- NEVER output links pointing to competitor or aggregator domains.
 
 OUTPUT MUST BE STRICT VALID JSON conforming to this schema:
 {
@@ -233,7 +257,7 @@ OUTPUT MUST BE STRICT VALID JSON conforming to this schema:
   ],
   "metaTitle": string (STRICTLY 50-60 characters. Clean, high CTR format: "{Exam/Job Name} {Year}: Apply Online, Dates"),
   "metaDescription": string (STRICTLY 140-155 characters. Must summarize eligibility, vacancies/seats, application deadline date, and call to action),
-  "tags": string[] (8-12 high-intent search tags covering exam name, organization acronym, state/central, qualification level, and keywords like "Sarkari Result", "Apply Online"),
+  "tags": string[] (8-12 high-intent search tags covering exam name, organization acronym, state/central, qualification level, and keywords like "Govt Jobs", "Apply Online", "Recruitment"),
   "confidence": number (0-100. How sure you are that EVERY field above is stated in the source. Use below 70 if any date, vacancy count or link was guessed),
   "uncertainFields": string[] (names of fields you had to guess or could not find in the source, e.g. ["lastDate","totalVacancy"]; empty array if none),
   "sections": [
