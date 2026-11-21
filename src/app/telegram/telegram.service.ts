@@ -16,7 +16,7 @@ export interface TelegramBroadcastPayload {
 export class TelegramService {
   private readonly logger = new Logger(TelegramService.name);
 
-  constructor(private readonly configService: ConfigService) {}
+  constructor(private readonly configService: ConfigService) { }
 
   private get isEnabled(): boolean {
     return this.configService.get<string>('TELEGRAM_BOT_ENABLED') === 'true';
@@ -30,8 +30,12 @@ export class TelegramService {
     return this.configService.get<string>('TELEGRAM_CHANNEL_ID') || '';
   }
 
-  private get publicSiteUrl(): string {
-    const raw = this.configService.get<string>('PUBLIC_SITE_URL') || 'http://localhost:3000';
+  private get siteUrl(): string {
+    const raw =
+      this.configService.get<string>('FRONTEND_URL') ||
+      this.configService.get<string>('SITE_URL') ||
+      this.configService.get<string>('PUBLIC_SITE_URL') ||
+      'http://localhost:3000';
     return raw.replace(/\/$/, '');
   }
 
@@ -50,7 +54,7 @@ export class TelegramService {
     }
 
     try {
-      const postUrl = `${this.publicSiteUrl}/jobs/${job.slug}`;
+      const postUrl = `${this.siteUrl}/jobs/${job.slug}`;
 
       // Format emoji header based on post type
       let typeHeader = '📢 *NEW NOTIFICATION*';
@@ -102,8 +106,8 @@ export class TelegramService {
       const endpoint = `https://api.telegram.org/bot${this.botToken}/sendMessage`;
 
       const isLocalhost =
-        this.publicSiteUrl.includes('localhost') ||
-        this.publicSiteUrl.includes('127.0.0.1');
+      this.siteUrl.includes('localhost') ||
+        this.siteUrl.includes('127.0.0.1');
 
       const bodyPayload: Record<string, any> = {
         chat_id: this.channelId,
@@ -117,8 +121,8 @@ export class TelegramService {
       const buttonUrl = !isLocalhost
         ? postUrl
         : (job.applyLink && job.applyLink.startsWith('http') && !job.applyLink.includes('localhost')
-            ? job.applyLink
-            : null);
+          ? job.applyLink
+          : null);
 
       if (buttonUrl) {
         bodyPayload.reply_markup = {
