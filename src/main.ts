@@ -20,19 +20,15 @@ async function bootstrap() {
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(compression());
 
-  // Enable CORS for frontends & local development
-  const allowedOrigins = [
-    'http://localhost:3000',
-    'http://localhost:3001',
-    'http://localhost:3002',
-    process.env.FRONTEND_URL,
-    process.env.ADMIN_FRONTEND_URL,
-  ].filter((url): url is string => Boolean(url));
-
+  // Enable CORS for all origins while supporting credentials
   app.enableCors({
-    origin: allowedOrigins,
+    origin: (origin, callback) => {
+      // Reflect the request origin to allow credentials from any origin
+      callback(null, origin || true);
+    },
     credentials: true,
-    methods:["PUT","GET","PATCH","DELETE","POST"]
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
   });
 
   // Global pipes
