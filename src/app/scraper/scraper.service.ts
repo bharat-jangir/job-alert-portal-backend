@@ -211,7 +211,7 @@ export class ScraperService {
     }
 
     const genAI = this.genAI || new GoogleGenerativeAI(apiKey);
-    const modelName = this.configService.get<string>('GEMINI_MODEL') || 'gemini-2.5-flash';
+    const modelName = this.configService.get<string>('GEMINI_MODEL') || 'gemini-3.8-flash';
     const model = genAI.getGenerativeModel({
       model: modelName,
       generationConfig: {

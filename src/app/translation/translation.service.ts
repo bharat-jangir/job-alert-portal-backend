@@ -45,7 +45,7 @@ export class TranslationService {
     if (!key) throw new ServiceUnavailableException('Translation is unavailable: GEMINI_API_KEY is not configured.');
     this.client ??= new GoogleGenerativeAI(key);
     return this.client.getGenerativeModel({
-      model: this.config.get<string>('GEMINI_MODEL') || 'gemini-2.5-flash',
+      model: this.config.get<string>('GEMINI_MODEL') || 'gemini-3.8-flash',
       generationConfig: { responseMimeType: 'application/json', temperature: 0.2 },
     });
   }
